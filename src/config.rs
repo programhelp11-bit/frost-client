@@ -28,7 +28,8 @@ pub struct Settings {
     pub java_path: String,
     /// Frost cosmetics backend (capes, presence).
     pub frost_api: String,
-    /// Azure application (client) id used for the Microsoft device-code flow.
+    /// Optional override of the built-in Azure application id (normally empty: the id is
+    /// compiled in from FROST_MS_CLIENT_ID so users never have to configure anything).
     pub ms_client_id: String,
     pub ipc_port: u16,
     pub hud: HudLayout,
@@ -43,7 +44,7 @@ impl Default for Settings {
             jvm_args: "-XX:+UseG1GC -XX:MaxGCPauseMillis=50 -XX:+DisableExplicitGC".into(),
             java_path: String::new(),
             frost_api: "https://api.frostclient.example".into(),
-            ms_client_id: std::env::var("FROST_MS_CLIENT_ID").unwrap_or_default(),
+            ms_client_id: String::new(),
             ipc_port: 25585,
             hud: HudLayout::default(),
             qol: QolSettings::default(),

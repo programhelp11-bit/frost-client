@@ -12,6 +12,8 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # Public Azure application (client) id, set once under Settings > Variables > Actions.
+  FROST_MS_CLIENT_ID: ${{ vars.FROST_MS_CLIENT_ID }}
 
 jobs:
   linux:

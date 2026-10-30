@@ -276,6 +276,165 @@ pub async fn refresh(http: &reqwest::Client, client_id: &str, acc: &Account) -> 
     Ok(fresh)
 }
 
+// ------------------------------------------------------------------------------------------------
+// One-click browser login (authorization code + PKCE, loopback redirect)
+// ------------------------------------------------------------------------------------------------
+
+const AUTHORIZE_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize";
+
+/// The Azure application id baked into the build (`FROST_MS_CLIENT_ID` at compile time), so end
+/// users never configure anything. A non-empty settings value or a runtime env var overrides it.
+pub fn effective_client_id(settings_override: &str) -> Option<String> {
+    let o = settings_override.trim();
+    if !o.is_empty() {
+        return Some(o.to_owned());
+    }
+    if let Some(id) = option_env!("FROST_MS_CLIENT_ID") {
+        if !id.trim().is_empty() {
+            return Some(id.trim().to_owned());
+        }
+    }
+    std::env::var("FROST_MS_CLIENT_ID").ok().filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_owned())
+}
+
+/// RFC 7636 S256 code challenge.
+pub fn pkce_challenge(verifier: &str) -> String {
+    use base64::Engine as _;
+    use sha2::{Digest, Sha256};
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+}
+
+fn random_string(len: usize) -> String {
+    use rand::distributions::Alphanumeric;
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    (0..len).map(|_| rng.sample(Alphanumeric) as char).collect()
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Callback {
+    pub code: Option<String>,
+    pub state: Option<String>,
+    pub error: Option<String>,
+}
+
+/// Parse the request line of the redirect, e.g. `GET /?code=abc&state=xyz HTTP/1.1`.
+/// Returns `None` for unrelated requests (favicon, probes).
+pub fn parse_callback(request_line: &str) -> Option<Callback> {
+    let path = request_line.split_whitespace().nth(1)?;
+    let url = reqwest::Url::parse(&format!("http://localhost{path}")).ok()?;
+    let mut cb = Callback { code: None, state: None, error: None };
+    for (k, v) in url.query_pairs() {
+        match k.as_ref() {
+            "code" => cb.code = Some(v.into_owned()),
+            "state" => cb.state = Some(v.into_owned()),
+            "error" => cb.error = Some(v.into_owned()),
+            _ => {}
+        }
+    }
+    if cb.code.is_some() || cb.error.is_some() {
+        Some(cb)
+    } else {
+        None
+    }
+}
+
+async fn respond(sock: &mut tokio::net::TcpStream, status: &str, title: &str, text: &str) {
+    use tokio::io::AsyncWriteExt;
+    let body = format!(
+        "<!doctype html><html><head><meta charset=utf-8><title>Frost Client</title></head>\
+         <body style=\"margin:0;height:100vh;display:flex;align-items:center;justify-content:center;\
+         background:radial-gradient(circle at 30% 20%,#1d3557,#0b1020);font-family:system-ui,sans-serif;color:#eaf2ff\">\
+         <div style=\"text-align:center;padding:40px 56px;border-radius:24px;background:rgba(255,255,255,.08);\
+         border:1px solid rgba(255,255,255,.2)\"><div style=\"font-size:48px\">&#10052;</div>\
+         <h1 style=\"margin:8px 0\">{title}</h1><p style=\"color:#a0b0c8\">{text}</p></div></body></html>"
+    );
+    let resp = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    let _ = sock.write_all(resp.as_bytes()).await;
+    let _ = sock.shutdown().await;
+}
+
+async fn wait_for_code(listener: &tokio::net::TcpListener, state: &str) -> Result<String> {
+    use tokio::io::AsyncReadExt;
+    loop {
+        let (mut sock, _) = listener.accept().await?;
+        let mut buf = vec![0u8; 8192];
+        let n = sock.read(&mut buf).await.unwrap_or(0);
+        let req = String::from_utf8_lossy(&buf[..n]).into_owned();
+        let line = req.lines().next().unwrap_or("");
+        match parse_callback(line) {
+            Some(cb) => {
+                if let Some(err) = cb.error {
+                    respond(&mut sock, "400 Bad Request", "Sign-in cancelled", "You can close this tab.").await;
+                    bail!("Microsoft sign-in failed: {err}");
+                }
+                if cb.state.as_deref() != Some(state) {
+                    respond(&mut sock, "400 Bad Request", "Sign-in failed", "State mismatch.").await;
+                    bail!("sign-in state mismatch");
+                }
+                respond(&mut sock, "200 OK", "Signed in", "You can close this tab and return to Frost Client.").await;
+                return cb.code.ok_or_else(|| anyhow!("no code in redirect"));
+            }
+            None => respond(&mut sock, "404 Not Found", "Not found", "").await,
+        }
+    }
+}
+
+/// Open the Microsoft sign-in page in the user's browser and wait for the redirect.
+/// `open_url` is called once with the authorization URL.
+pub async fn browser_login(
+    http: &reqwest::Client,
+    client_id: &str,
+    open_url: impl FnOnce(&str),
+) -> Result<MsTokens> {
+    let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.context("bind loopback")?;
+    let port = listener.local_addr()?.port();
+    let redirect = format!("http://localhost:{port}");
+    let verifier = random_string(64);
+    let challenge = pkce_challenge(&verifier);
+    let state = random_string(24);
+
+    let url = reqwest::Url::parse_with_params(
+        AUTHORIZE_URL,
+        &[
+            ("client_id", client_id),
+            ("response_type", "code"),
+            ("redirect_uri", redirect.as_str()),
+            ("scope", SCOPE),
+            ("code_challenge", challenge.as_str()),
+            ("code_challenge_method", "S256"),
+            ("state", state.as_str()),
+            ("response_mode", "query"),
+            ("prompt", "select_account"),
+        ],
+    )?;
+    open_url(url.as_str());
+
+    let code = tokio::time::timeout(Duration::from_secs(300), wait_for_code(&listener, &state))
+        .await
+        .map_err(|_| anyhow!("sign-in timed out"))??;
+
+    let resp = http
+        .post(TOKEN_URL)
+        .form(&[
+            ("client_id", client_id),
+            ("grant_type", "authorization_code"),
+            ("code", code.as_str()),
+            ("redirect_uri", redirect.as_str()),
+            ("code_verifier", verifier.as_str()),
+            ("scope", SCOPE),
+        ])
+        .send()
+        .await?;
+    if !resp.status().is_success() {
+        bail!("token exchange failed: {}", resp.text().await.unwrap_or_default());
+    }
+    Ok(resp.json().await?)
+}
+
 /// Accounts persisted to `accounts.json` (file mode 0600 on Unix).
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct AccountStore {
@@ -352,6 +511,29 @@ mod tests {
         assert_eq!(s.active().unwrap().uuid, "b");
         s.remove_active();
         assert_eq!(s.active().unwrap().uuid, "a");
+    }
+
+    #[test]
+    fn pkce_matches_rfc7636_vector() {
+        assert_eq!(
+            pkce_challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"),
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+        );
+    }
+
+    #[test]
+    fn callback_parsing() {
+        let cb = parse_callback("GET /?code=abc%20d&state=xyz HTTP/1.1").unwrap();
+        assert_eq!(cb.code.as_deref(), Some("abc d"));
+        assert_eq!(cb.state.as_deref(), Some("xyz"));
+        assert!(parse_callback("GET /favicon.ico HTTP/1.1").is_none());
+        let err = parse_callback("GET /?error=access_denied HTTP/1.1").unwrap();
+        assert_eq!(err.error.as_deref(), Some("access_denied"));
+    }
+
+    #[test]
+    fn settings_override_wins() {
+        assert_eq!(effective_client_id(" my-id ").as_deref(), Some("my-id"));
     }
 
     #[test]

@@ -1,26 +1,34 @@
 //! The launcher window (egui / eframe), liquid-glass style.
+//!
+//! Layout: custom top bar (wordmark, navigation, settings, avatar, window buttons) and a
+//! hero home screen with the selected version, a Launch / Login button and a row of version cards.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
 
-use eframe::egui::{self, Align, Color32, Layout, RichText, Rounding, Sense, Stroke, Vec2};
+use eframe::egui::{
+    self, pos2, vec2, Align, Color32, Layout, Pos2, Rect, RichText, Rounding, Sense, Stroke, Vec2,
+};
 use tokio::runtime::Handle;
 
-use crate::auth::{self, Account, AccountStore, DeviceCode};
+use crate::auth::{self, Account, AccountStore};
 use crate::config::Settings;
 use crate::cosmetics::{self, FrostApi, SkinVariant};
 use crate::downloader::Progress;
 use crate::glass::{self, glass_panel};
-use crate::hud_manager::{self, GameStats, HudKind};
+use crate::hud_manager::{self, GameStats};
 use crate::ipc::{self, IpcHandle, ToGame};
 use crate::launch;
 use crate::trainer::{CombatStyle, KbProfile};
 use crate::versions;
 
+const BLUE: Color32 = Color32::from_rgb(54, 88, 255);
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Tab {
-    Play,
+    Home,
+    Versions,
     Skins,
     Hud,
     Trainer,
@@ -28,10 +36,12 @@ enum Tab {
 }
 
 impl Tab {
-    const ALL: [Tab; 5] = [Tab::Play, Tab::Skins, Tab::Hud, Tab::Trainer, Tab::Settings];
+    /// Tabs shown in the top navigation (Settings lives behind the gear icon).
+    const NAV: [Tab; 5] = [Tab::Home, Tab::Versions, Tab::Skins, Tab::Hud, Tab::Trainer];
     fn label(self) -> &'static str {
         match self {
-            Tab::Play => "Play",
+            Tab::Home => "Home",
+            Tab::Versions => "Versions",
             Tab::Skins => "Skins & Capes",
             Tab::Hud => "HUD & QoL",
             Tab::Trainer => "Trainer",
@@ -47,7 +57,6 @@ enum PickTarget {
 }
 
 enum UiEvent {
-    DeviceCode(DeviceCode),
     LoggedIn(Account),
     AccountRefreshed(Account),
     Status(String),
@@ -71,8 +80,9 @@ pub struct FrostApp {
     status: String,
     error: Option<String>,
     busy: bool,
+    signing_in: bool,
     game_running: bool,
-    device_code: Option<DeviceCode>,
+    maximized: bool,
     progress: Arc<Progress>,
     ipc: Option<IpcHandle>,
 
@@ -130,12 +140,13 @@ impl FrostApp {
             rx,
             settings,
             store: AccountStore::load(),
-            tab: Tab::Play,
+            tab: Tab::Home,
             status: "Ready".into(),
             error: None,
             busy: false,
+            signing_in: false,
             game_running: false,
-            device_code: None,
+            maximized: false,
             progress: Arc::new(Progress::default()),
             ipc: None,
             skin_bytes: None,
@@ -159,17 +170,11 @@ impl FrostApp {
     fn poll_events(&mut self) {
         while let Ok(ev) = self.rx.try_recv() {
             match ev {
-                UiEvent::DeviceCode(c) => {
-                    let _ = open::that(&c.verification_uri);
-                    self.ctx.copy_text(c.user_code.clone());
-                    self.device_code = Some(c);
-                }
                 UiEvent::LoggedIn(acc) => {
-                    self.device_code = None;
+                    self.signing_in = false;
                     self.status = format!("Signed in as {}", acc.username);
                     self.store.upsert(acc);
                     let _ = self.store.save();
-                    self.busy = false;
                 }
                 UiEvent::AccountRefreshed(acc) => {
                     self.store.upsert(acc);
@@ -179,7 +184,7 @@ impl FrostApp {
                 UiEvent::Error(e) => {
                     self.error = Some(e);
                     self.busy = false;
-                    self.device_code = None;
+                    self.signing_in = false;
                 }
                 UiEvent::Busy(b) => self.busy = b,
                 UiEvent::GameExited => {
@@ -215,26 +220,30 @@ impl FrostApp {
         }
     }
 
-    fn send(&self, ev: UiEvent) {
-        let _ = self.tx.send(ev);
-        self.ctx.request_repaint();
-    }
-
     // ---------------------------------------------------------------------------------------------
     // actions
     // ---------------------------------------------------------------------------------------------
 
+    /// One click: opens the Microsoft sign-in page in the browser, the redirect is caught locally.
     fn start_sign_in(&mut self) {
         self.error = None;
-        self.busy = true;
+        let Some(client_id) = auth::effective_client_id(&self.settings.ms_client_id) else {
+            self.error = Some(
+                "This build has no Microsoft app id compiled in. Set the FROST_MS_CLIENT_ID \
+                 repository variable and rebuild (see README)."
+                    .into(),
+            );
+            return;
+        };
+        self.signing_in = true;
+        self.status = "Waiting for Microsoft sign-in in your browser...".into();
         let (http, tx, ctx) = (self.http.clone(), self.tx.clone(), self.ctx.clone());
-        let client_id = self.settings.ms_client_id.clone();
         self.rt.spawn(async move {
             let run = async {
-                let code = auth::start_device_flow(&http, &client_id).await?;
-                let _ = tx.send(UiEvent::DeviceCode(code.clone()));
-                ctx.request_repaint();
-                let ms = auth::poll_device_flow(&http, &client_id, &code).await?;
+                let ms = auth::browser_login(&http, &client_id, |url| {
+                    let _ = open::that(url);
+                })
+                .await?;
                 auth::login_with_ms(&http, &ms).await
             };
             let _ = match run.await {
@@ -247,7 +256,7 @@ impl FrostApp {
 
     fn start_launch(&mut self) {
         let Some(account) = self.store.active().cloned() else {
-            self.error = Some("Sign in with Microsoft first.".into());
+            self.start_sign_in();
             return;
         };
         self.error = None;
@@ -265,7 +274,9 @@ impl FrostApp {
                 let mut account = account;
                 if account.is_expired() {
                     let _ = tx.send(UiEvent::Status("Refreshing Microsoft session...".into()));
-                    account = auth::refresh(&http, &settings.ms_client_id, &account).await?;
+                    let client_id = auth::effective_client_id(&settings.ms_client_id)
+                        .ok_or_else(|| anyhow::anyhow!("no Microsoft app id compiled in"))?;
+                    account = auth::refresh(&http, &client_id, &account).await?;
                     let _ = tx.send(UiEvent::AccountRefreshed(account.clone()));
                 }
                 let _ = tx.send(UiEvent::Status(format!("Downloading Minecraft {version}...")));
@@ -382,92 +393,94 @@ impl FrostApp {
     }
 
     // ---------------------------------------------------------------------------------------------
-    // layout
+    // top bar
     // ---------------------------------------------------------------------------------------------
 
-    fn title_bar(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::top("title")
-            .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(16.0, 10.0)))
+    fn top_bar(&mut self, ctx: &egui::Context) {
+        egui::TopBottomPanel::top("topbar")
+            .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(26.0, 16.0)))
             .show(ctx, |ui| {
                 let drag = ui.interact(ui.max_rect(), egui::Id::new("title_drag"), Sense::click_and_drag());
                 if drag.drag_started() {
                     ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
                 }
+                if drag.double_clicked() {
+                    self.maximized = !self.maximized;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(self.maximized));
+                }
                 ui.horizontal(|ui| {
-                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::hover());
-                    glass::paint_snowflake(ui.painter(), rect.center(), 11.0, glass::ACCENT);
-                    ui.label(RichText::new("Frost Client").size(18.0).strong());
-                    ui.label(RichText::new(env!("CARGO_PKG_VERSION")).size(12.0).color(glass::TEXT_DIM));
+                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(26.0), Sense::hover());
+                    glass::paint_snowflake(ui.painter(), rect.center(), 12.0, glass::ACCENT);
+                    ui.label(RichText::new("FROSTCLIENT").size(24.0).strong().color(Color32::from_rgb(214, 224, 255)));
+                    ui.add_space(70.0);
+
+                    for tab in Tab::NAV {
+                        let selected = self.tab == tab;
+                        let color = if selected { Color32::WHITE } else { Color32::from_white_alpha(120) };
+                        let resp = ui
+                            .add(egui::Label::new(RichText::new(tab.label()).size(15.0).color(color)).sense(Sense::click()))
+                            .on_hover_cursor(egui::CursorIcon::PointingHand);
+                        if selected {
+                            let y = resp.rect.bottom() + 3.0;
+                            ui.painter().line_segment(
+                                [pos2(resp.rect.left() + 2.0, y), pos2(resp.rect.left() + 22.0, y)],
+                                Stroke::new(2.0, Color32::WHITE),
+                            );
+                        }
+                        if resp.clicked() {
+                            self.tab = tab;
+                        }
+                        ui.add_space(26.0);
+                    }
+
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.button(" X ").clicked() {
+                        if window_button(ui, WinBtn::Close).clicked() {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
-                        if ui.button(" - ").clicked() {
+                        if window_button(ui, WinBtn::Maximize).clicked() {
+                            self.maximized = !self.maximized;
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(self.maximized));
+                        }
+                        if window_button(ui, WinBtn::Minimize).clicked() {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+                        }
+                        ui.add_space(8.0);
+                        // avatar
+                        let name = self.store.active().map(|a| a.username.clone());
+                        let (rect, resp) = ui.allocate_exact_size(Vec2::splat(30.0), Sense::click());
+                        let p = ui.painter();
+                        p.rect_filled(rect, 8.0, Color32::from_rgba_unmultiplied(120, 200, 255, if name.is_some() { 90 } else { 30 }));
+                        p.rect_stroke(rect, 8.0, Stroke::new(1.0, Color32::from_white_alpha(90)));
+                        let letter = name.as_deref().and_then(|n| n.chars().next()).map_or('?', |c| c.to_ascii_uppercase());
+                        p.text(rect.center(), egui::Align2::CENTER_CENTER, letter.to_string(), egui::FontId::proportional(16.0), Color32::WHITE);
+                        if resp.on_hover_text(name.as_deref().unwrap_or("Not signed in")).clicked() {
+                            self.tab = Tab::Settings;
+                        }
+                        ui.add_space(6.0);
+                        if window_button(ui, WinBtn::Gear).clicked() {
+                            self.tab = Tab::Settings;
                         }
                     });
                 });
             });
     }
 
-    fn sidebar(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("nav")
-            .exact_width(200.0)
-            .resizable(false)
-            .frame(egui::Frame::none().inner_margin(egui::Margin::symmetric(14.0, 8.0)))
-            .show(ctx, |ui| {
-                ui.add_space(6.0);
-                for tab in Tab::ALL {
-                    let selected = self.tab == tab;
-                    let text = RichText::new(tab.label()).size(15.0);
-                    let btn = egui::Button::new(if selected { text.strong() } else { text })
-                        .fill(if selected {
-                            Color32::from_rgba_unmultiplied(120, 200, 255, 60)
-                        } else {
-                            Color32::from_white_alpha(8)
-                        })
-                        .stroke(Stroke::new(1.0, Color32::from_white_alpha(if selected { 110 } else { 28 })))
-                        .rounding(Rounding::same(12.0))
-                        .min_size(Vec2::new(ui.available_width(), 40.0));
-                    if ui.add(btn).clicked() {
-                        self.tab = tab;
-                    }
-                    ui.add_space(4.0);
-                }
-                ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
-                    ui.add_space(6.0);
-                    let connected = self.ipc.as_ref().map_or(false, |i| i.connected());
-                    ui.label(
-                        RichText::new(if connected { "Game agent: connected" } else { "Game agent: not connected" })
-                            .size(12.0)
-                            .color(if connected { glass::ACCENT } else { glass::TEXT_DIM }),
-                    );
-                });
-            });
-    }
-
     fn content(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default()
-            .frame(egui::Frame::none().inner_margin(egui::Margin { left: 6.0, right: 18.0, top: 8.0, bottom: 14.0 }))
+            .frame(egui::Frame::none().inner_margin(egui::Margin { left: 14.0, right: 14.0, top: 2.0, bottom: 14.0 }))
             .show(ctx, |ui| {
+                if self.tab == Tab::Home {
+                    self.tab_home(ctx, ui);
+                    return;
+                }
                 egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                    ui.add_space(6.0);
                     if let Some(err) = self.error.clone() {
-                        let mut dismiss = false;
-                        glass_panel(ui, 120, 14.0, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.label(RichText::new(err).color(Color32::from_rgb(255, 140, 140)));
-                                if ui.button("Dismiss").clicked() {
-                                    dismiss = true;
-                                }
-                            });
-                        });
-                        if dismiss {
-                            self.error = None;
-                        }
-                        ui.add_space(10.0);
+                        self.error_card(ui, err);
                     }
                     match self.tab {
-                        Tab::Play => self.tab_play(ui),
+                        Tab::Home => {}
+                        Tab::Versions => self.tab_versions(ui),
                         Tab::Skins => self.tab_skins(ui),
                         Tab::Hud => self.tab_hud(ctx, ui),
                         Tab::Trainer => self.tab_trainer(ui),
@@ -477,84 +490,210 @@ impl FrostApp {
             });
     }
 
+    fn error_card(&mut self, ui: &mut egui::Ui, err: String) {
+        let mut dismiss = false;
+        glass_panel(ui, 120, 14.0, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(err).color(Color32::from_rgb(255, 140, 140)));
+                if ui.button("Dismiss").clicked() {
+                    dismiss = true;
+                }
+            });
+        });
+        if dismiss {
+            self.error = None;
+        }
+        ui.add_space(10.0);
+    }
+
     // ---------------------------------------------------------------------------------------------
-    // tabs
+    // home (hero) screen
     // ---------------------------------------------------------------------------------------------
 
-    fn tab_play(&mut self, ui: &mut egui::Ui) {
-        glass_panel(ui, 100, 18.0, |ui| {
-            ui.label(RichText::new("Account").size(16.0).strong());
-            ui.add_space(6.0);
-            match self.store.active().cloned() {
-                Some(acc) => {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new(&acc.username).size(18.0).strong());
-                        ui.label(RichText::new(format!("({})", acc.uuid)).size(11.0).color(glass::TEXT_DIM));
-                        if ui.button("Sign out").clicked() {
-                            self.store.remove_active();
-                            let _ = self.store.save();
-                        }
-                    });
+    fn tab_home(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
+        let hero = ui.max_rect();
+        let painter = ui.painter().clone();
+        rounded_gradient(
+            &painter,
+            hero,
+            20.0,
+            Color32::from_rgb(40, 76, 150),
+            Color32::from_rgb(10, 16, 34),
+        );
+        let t = ctx.input(|i| i.time) as f32;
+        paint_aurora(&painter, hero, t);
+        paint_snow(&painter, hero, t);
+
+        let version = self.settings.selected_version.clone();
+        let (title_sub, _) = version_info(&version);
+
+        // --- title block --------------------------------------------------------------------------
+        let block = Rect::from_min_size(
+            pos2(hero.left() + 40.0, hero.top() + hero.height() * 0.16),
+            vec2(hero.width() * 0.6, 220.0),
+        );
+        ui.allocate_ui_at_rect(block, |ui| {
+            ui.label(RichText::new(format!("{version} Fabric")).size(64.0).strong().color(Color32::from_rgb(232, 238, 255)));
+            ui.label(RichText::new(title_sub).size(15.0).color(Color32::from_white_alpha(150)));
+            ui.add_space(14.0);
+
+            if let Some(err) = self.error.clone() {
+                ui.label(RichText::new(err.clone()).size(13.0).color(Color32::from_rgb(255, 150, 150)));
+                if ui.small_button("Dismiss").clicked() {
+                    self.error = None;
                 }
-                None => {
-                    if let Some(code) = self.device_code.clone() {
-                        ui.label("Open the page in your browser and enter this code (copied to clipboard):");
-                        ui.label(RichText::new(&code.user_code).size(30.0).strong().color(glass::ACCENT));
-                        if ui.link(&code.verification_uri).clicked() {
-                            let _ = open::that(&code.verification_uri);
-                        }
-                        ui.label(RichText::new("Waiting for you to finish signing in...").color(glass::TEXT_DIM));
-                    } else if ui
-                        .add_enabled(!self.busy, egui::Button::new("Sign in with Microsoft").min_size(Vec2::new(220.0, 36.0)))
-                        .clicked()
-                    {
+                ui.add_space(6.0);
+            }
+
+            let logged_in = self.store.active().is_some();
+            ui.horizontal(|ui| {
+                if logged_in {
+                    let label = if self.game_running { "Running..." } else { "Launch" };
+                    let btn = egui::Button::new(RichText::new(label).size(17.0).strong().color(Color32::WHITE))
+                        .fill(BLUE)
+                        .rounding(Rounding::same(9.0))
+                        .min_size(vec2(130.0, 42.0));
+                    if ui.add_enabled(!self.busy && !self.game_running, btn).clicked() {
+                        let _ = self.settings.save();
+                        self.start_launch();
+                    }
+                } else {
+                    let label = if self.signing_in { "Waiting for browser..." } else { "Login" };
+                    let btn = egui::Button::new(RichText::new(label).size(17.0).strong().color(Color32::WHITE))
+                        .fill(BLUE)
+                        .rounding(Rounding::same(9.0))
+                        .min_size(vec2(170.0, 42.0));
+                    if ui.add_enabled(!self.signing_in, btn).clicked() {
                         self.start_sign_in();
                     }
                 }
+                let opts = egui::Button::new(RichText::new("Options").size(14.0))
+                    .fill(Color32::from_white_alpha(18))
+                    .rounding(Rounding::same(9.0))
+                    .min_size(vec2(90.0, 42.0));
+                if ui.add(opts).clicked() {
+                    self.tab = Tab::Versions;
+                }
+            });
+            ui.add_space(8.0);
+            if self.busy {
+                ui.add(
+                    egui::ProgressBar::new(self.progress.fraction())
+                        .animate(true)
+                        .desired_width(320.0)
+                        .text(self.status.clone()),
+                );
+            } else if let Some(acc) = self.store.active() {
+                ui.label(RichText::new(format!("Signed in as {}  -  {}", acc.username, self.status)).size(12.0).color(Color32::from_white_alpha(130)));
+            } else {
+                ui.label(
+                    RichText::new("Opens the Microsoft sign-in in your browser. That's it.")
+                        .size(12.0)
+                        .color(Color32::from_white_alpha(130)),
+                );
+            }
+        });
+
+        // --- version cards ------------------------------------------------------------------------
+        let n = versions::SUPPORTED.len() as f32;
+        let gap = 18.0;
+        let side = 36.0;
+        let more_w = 64.0;
+        let card_h = 150.0;
+        let avail = hero.width() - side * 2.0 - more_w - gap * n;
+        let card_w = (avail / n).clamp(150.0, 270.0);
+        let y = hero.bottom() - 28.0 - card_h;
+        let mut x = hero.left() + side;
+        for (i, v) in versions::SUPPORTED.iter().enumerate() {
+            let rect = Rect::from_min_size(pos2(x, y), vec2(card_w, card_h));
+            let selected = self.settings.selected_version == *v;
+            let resp = ui.interact(rect, egui::Id::new(("vcard", i)), Sense::click());
+            let (c1, c2) = card_colors(i);
+            let lift = if resp.hovered() { 1.15 } else { 1.0 };
+            rounded_gradient(&painter, rect, 14.0, scale_color(c1, lift), scale_color(c2, lift));
+            paint_card_art(&painter, rect, i, t);
+            // darken the lower part for legible text
+            rounded_gradient(
+                &painter,
+                Rect::from_min_max(pos2(rect.left(), rect.top() + card_h * 0.45), rect.max),
+                14.0,
+                Color32::from_black_alpha(0),
+                Color32::from_black_alpha(150),
+            );
+            painter.text(
+                pos2(rect.left() + 18.0, rect.bottom() - 18.0),
+                egui::Align2::LEFT_BOTTOM,
+                format!("{v} Fabric"),
+                egui::FontId::proportional(22.0),
+                Color32::WHITE,
+            );
+            let stroke = if selected {
+                Stroke::new(2.0, Color32::from_rgb(110, 140, 255))
+            } else {
+                Stroke::new(1.0, Color32::from_white_alpha(40))
+            };
+            painter.rect_stroke(rect, 14.0, stroke);
+            if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                self.settings.selected_version = (*v).to_owned();
+                let _ = self.settings.save();
+            }
+            x += card_w + gap;
+        }
+        // "more" card
+        let more = Rect::from_min_size(pos2(x, y), vec2(more_w, card_h));
+        let resp = ui.interact(more, egui::Id::new("vcard_more"), Sense::click());
+        painter.rect_filled(more, 14.0, Color32::from_white_alpha(if resp.hovered() { 40 } else { 24 }));
+        painter.rect_stroke(more, 14.0, Stroke::new(1.0, Color32::from_white_alpha(40)));
+        for r in 0..3 {
+            for c in 0..3 {
+                painter.circle_filled(
+                    more.center() + vec2((c as f32 - 1.0) * 11.0, (r as f32 - 1.0) * 11.0),
+                    2.6,
+                    Color32::WHITE,
+                );
+            }
+        }
+        if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+            self.tab = Tab::Versions;
+        }
+
+        // light animation only while this screen is visible (~15 fps keeps CPU near idle)
+        ctx.request_repaint_after(Duration::from_millis(66));
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // other tabs
+    // ---------------------------------------------------------------------------------------------
+
+    fn tab_versions(&mut self, ui: &mut egui::Ui) {
+        glass_panel(ui, 100, 18.0, |ui| {
+            ui.label(RichText::new("Game version").size(16.0).strong());
+            ui.add_space(6.0);
+            for v in versions::SUPPORTED {
+                let (sub, _) = version_info(v);
+                ui.horizontal(|ui| {
+                    ui.radio_value(&mut self.settings.selected_version, (*v).to_owned(), RichText::new(*v).size(16.0));
+                    ui.label(RichText::new(sub).size(12.0).color(glass::TEXT_DIM));
+                });
             }
         });
         ui.add_space(12.0);
-
         glass_panel(ui, 100, 18.0, |ui| {
-            ui.label(RichText::new("Game").size(16.0).strong());
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                ui.label("Version");
-                egui::ComboBox::from_id_source("version")
-                    .selected_text(self.settings.selected_version.clone())
-                    .show_ui(ui, |ui| {
-                        for v in versions::SUPPORTED {
-                            ui.selectable_value(&mut self.settings.selected_version, (*v).to_owned(), *v);
-                        }
-                    });
-                if versions::is_legacy(&self.settings.selected_version) {
-                    ui.label(RichText::new("legacy PvP (1.8 combat)").size(12.0).color(glass::TEXT_DIM));
-                }
-            });
+            ui.label(RichText::new("Performance").size(16.0).strong());
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 ui.label("Memory");
                 ui.add(egui::Slider::new(&mut self.settings.ram_mb, 1024..=16384).step_by(256.0).suffix(" MB"));
             });
-            ui.add_space(12.0);
-            let can_play = !self.busy && !self.game_running;
-            let label = if self.game_running { "Running..." } else { "PLAY" };
-            let play = egui::Button::new(RichText::new(label).size(20.0).strong())
-                .fill(Color32::from_rgba_unmultiplied(120, 200, 255, 90))
-                .stroke(Stroke::new(1.0, glass::ACCENT))
-                .rounding(Rounding::same(14.0))
-                .min_size(Vec2::new(ui.available_width(), 52.0));
-            if ui.add_enabled(can_play, play).clicked() {
-                let _ = self.settings.save();
-                self.start_launch();
-            }
-            if self.busy {
-                ui.add_space(8.0);
-                ui.add(egui::ProgressBar::new(self.progress.fraction()).animate(true).text(self.status.clone()));
-                self.ctx.request_repaint_after(Duration::from_millis(100));
-            } else {
-                ui.add_space(6.0);
-                ui.label(RichText::new(&self.status).color(glass::TEXT_DIM));
+            ui.add_space(4.0);
+            ui.label("JVM arguments");
+            ui.add(egui::TextEdit::multiline(&mut self.settings.jvm_args).desired_rows(2).desired_width(f32::INFINITY));
+            ui.add_space(8.0);
+            if ui.button("Save").clicked() {
+                match self.settings.save() {
+                    Ok(()) => self.status = "Settings saved".into(),
+                    Err(e) => self.error = Some(format!("{e:#}")),
+                }
             }
         });
     }
@@ -694,10 +833,9 @@ impl FrostApp {
                 ui.checkbox(&mut q.chunk_optimizer, "Chunk optimizer");
                 ui.end_row();
             });
-            ui.add(egui::Slider::new(&mut q.zoom_fov, 5.0..=60.0).text("zoom FOV"));
+            ui.add(egui::Slider::new(&mut q.zoom_fov, 30.0..=60.0).text("zoom FOV"));
             ui.add(egui::Slider::new(&mut q.chunk_render_cap, 4..=32).text("chunk cap"));
         });
-        let _ = HudKind::ALL; // keeps the enum import meaningful for editors
     }
 
     fn tab_trainer(&mut self, ui: &mut egui::Ui) {
@@ -767,15 +905,32 @@ impl FrostApp {
 
     fn tab_settings(&mut self, ui: &mut egui::Ui) {
         glass_panel(ui, 100, 18.0, |ui| {
+            ui.label(RichText::new("Account").size(16.0).strong());
+            ui.add_space(6.0);
+            match self.store.active().cloned() {
+                Some(acc) => {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(&acc.username).size(18.0).strong());
+                        ui.label(RichText::new(format!("({})", acc.uuid)).size(11.0).color(glass::TEXT_DIM));
+                        if ui.button("Sign out").clicked() {
+                            self.store.remove_active();
+                            let _ = self.store.save();
+                        }
+                    });
+                }
+                None => {
+                    let label = if self.signing_in { "Waiting for browser..." } else { "Login with Microsoft" };
+                    if ui.add_enabled(!self.signing_in, egui::Button::new(label)).clicked() {
+                        self.start_sign_in();
+                    }
+                }
+            }
+        });
+        ui.add_space(12.0);
+        glass_panel(ui, 100, 18.0, |ui| {
             ui.label(RichText::new("Launcher settings").size(16.0).strong());
             ui.add_space(6.0);
             egui::Grid::new("settings").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
-                ui.label("Max memory");
-                ui.add(egui::Slider::new(&mut self.settings.ram_mb, 1024..=16384).step_by(256.0).suffix(" MB"));
-                ui.end_row();
-                ui.label("JVM arguments");
-                ui.add(egui::TextEdit::multiline(&mut self.settings.jvm_args).desired_rows(2).desired_width(420.0));
-                ui.end_row();
                 ui.label("Java path");
                 ui.add(
                     egui::TextEdit::singleline(&mut self.settings.java_path)
@@ -786,9 +941,11 @@ impl FrostApp {
                 ui.label("Frost backend");
                 ui.add(egui::TextEdit::singleline(&mut self.settings.frost_api).desired_width(420.0));
                 ui.end_row();
-                ui.label("Microsoft client id");
+            });
+            ui.add_space(6.0);
+            ui.collapsing("Advanced", |ui| {
+                ui.label(RichText::new("Override the built-in Microsoft app id (normally leave empty).").size(12.0).color(glass::TEXT_DIM));
                 ui.add(egui::TextEdit::singleline(&mut self.settings.ms_client_id).desired_width(420.0));
-                ui.end_row();
             });
             ui.add_space(8.0);
             if ui.button("Save").clicked() {
@@ -812,21 +969,157 @@ impl eframe::App for FrostApp {
         // window background: translucent tint + border (the OS blur sits behind this)
         let bg = ctx.layer_painter(egui::LayerId::background());
         let screen = ctx.screen_rect();
-        bg.rect_filled(screen, 16.0, Color32::from_rgba_unmultiplied(10, 14, 26, 150));
-        bg.rect_filled(
-            egui::Rect::from_min_max(screen.min, egui::pos2(screen.max.x, screen.min.y + screen.height() * 0.3)),
-            Rounding { nw: 16.0, ne: 16.0, sw: 0.0, se: 0.0 },
-            Color32::from_white_alpha(7),
-        );
+        bg.rect_filled(screen, 16.0, Color32::from_rgba_unmultiplied(12, 16, 28, 175));
         bg.rect_stroke(screen.shrink(0.5), 16.0, Stroke::new(1.0, Color32::from_white_alpha(48)));
 
-        self.title_bar(ctx);
-        self.sidebar(ctx);
+        self.top_bar(ctx);
         self.content(ctx);
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         let _ = self.settings.save();
+    }
+}
+
+// ------------------------------------------------------------------------------------------------
+// drawing helpers
+// ------------------------------------------------------------------------------------------------
+
+#[derive(Clone, Copy)]
+enum WinBtn {
+    Minimize,
+    Maximize,
+    Close,
+    Gear,
+}
+
+fn window_button(ui: &mut egui::Ui, kind: WinBtn) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(28.0), Sense::click());
+    let p = ui.painter();
+    if resp.hovered() {
+        p.rect_filled(rect, 8.0, Color32::from_white_alpha(28));
+    }
+    let c = rect.center();
+    let s = Stroke::new(1.6, Color32::from_white_alpha(if resp.hovered() { 255 } else { 190 }));
+    match kind {
+        WinBtn::Minimize => p.line_segment([c + vec2(-6.0, 4.0), c + vec2(6.0, 4.0)], s),
+        WinBtn::Maximize => p.rect_stroke(Rect::from_center_size(c, Vec2::splat(11.0)), 2.0, s),
+        WinBtn::Close => {
+            p.line_segment([c + vec2(-5.5, -5.5), c + vec2(5.5, 5.5)], s);
+            p.line_segment([c + vec2(-5.5, 5.5), c + vec2(5.5, -5.5)], s);
+        }
+        WinBtn::Gear => {
+            p.circle_stroke(c, 4.0, s);
+            for i in 0..8 {
+                let a = i as f32 * std::f32::consts::TAU / 8.0;
+                let d = vec2(a.cos(), a.sin());
+                p.line_segment([c + d * 6.5, c + d * 9.0], s);
+            }
+        }
+    }
+    resp.on_hover_cursor(egui::CursorIcon::PointingHand)
+}
+
+/// Vertical gradient inside a rounded rectangle, built as a vertex-coloured triangle strip.
+fn rounded_gradient(painter: &egui::Painter, rect: Rect, radius: f32, top: Color32, bottom: Color32) {
+    let r = radius.min(rect.height() * 0.5).min(rect.width() * 0.5);
+    let mut ys: Vec<f32> = Vec::new();
+    for k in 0..=4 {
+        ys.push(rect.top() + r * k as f32 / 4.0);
+    }
+    let mid_steps = 16;
+    for k in 1..mid_steps {
+        ys.push(rect.top() + r + (rect.height() - 2.0 * r) * k as f32 / mid_steps as f32);
+    }
+    for k in 0..=4 {
+        ys.push(rect.bottom() - r + r * k as f32 / 4.0);
+    }
+    let mut mesh = egui::Mesh::default();
+    for (i, &y) in ys.iter().enumerate() {
+        let dy = (y - rect.top()).min(rect.bottom() - y).max(0.0);
+        let inset = if dy < r { r - (r * r - (r - dy) * (r - dy)).max(0.0).sqrt() } else { 0.0 };
+        let t = ((y - rect.top()) / rect.height().max(1.0)).clamp(0.0, 1.0);
+        let col = top.lerp_to_gamma(bottom, t);
+        mesh.colored_vertex(pos2(rect.left() + inset, y), col);
+        mesh.colored_vertex(pos2(rect.right() - inset, y), col);
+        if i > 0 {
+            let a = (2 * (i - 1)) as u32;
+            let b = (2 * i) as u32;
+            mesh.add_triangle(a, a + 1, b);
+            mesh.add_triangle(a + 1, b + 1, b);
+        }
+    }
+    painter.add(egui::Shape::mesh(mesh));
+}
+
+fn scale_color(c: Color32, k: f32) -> Color32 {
+    let f = |v: u8| ((f32::from(v) * k).min(255.0)) as u8;
+    Color32::from_rgb(f(c.r()), f(c.g()), f(c.b()))
+}
+
+/// Soft coloured glows behind the hero (stacked translucent circles, slowly drifting).
+fn paint_aurora(painter: &egui::Painter, rect: Rect, t: f32) {
+    let blobs = [
+        (0.78, 0.30, 260.0, Color32::from_rgb(120, 80, 255), 0.0),
+        (0.62, 0.55, 220.0, Color32::from_rgb(60, 190, 255), 1.7),
+        (0.92, 0.62, 200.0, Color32::from_rgb(255, 110, 190), 3.1),
+    ];
+    for (fx, fy, r, col, phase) in blobs {
+        let c = pos2(
+            rect.left() + rect.width() * fx + (t * 0.25 + phase).sin() * 24.0,
+            rect.top() + rect.height() * fy + (t * 0.2 + phase).cos() * 16.0,
+        );
+        for k in 0..14 {
+            let rr = r * (1.0 - k as f32 / 14.0);
+            painter.circle_filled(c, rr, Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 3));
+        }
+    }
+}
+
+/// Deterministic drifting snow (no allocations, no RNG state).
+fn paint_snow(painter: &egui::Painter, rect: Rect, t: f32) {
+    let n = 70;
+    for i in 0..n {
+        let fi = i as f32;
+        let sx = ((fi * 12.9898).sin() * 43758.547).fract().abs();
+        let sy = ((fi * 78.233).sin() * 12345.678).fract().abs();
+        let speed = 14.0 + 26.0 * (((fi * 3.1).sin() * 999.0).fract().abs());
+        let size = 1.0 + 2.2 * (((fi * 5.7).sin() * 777.0).fract().abs());
+        let x = rect.left() + rect.width() * sx + (t * 0.6 + fi).sin() * 14.0;
+        let y = rect.top() + ((sy * rect.height() + t * speed) % rect.height());
+        if x > rect.left() && x < rect.right() {
+            painter.circle_filled(pos2(x, y), size, Color32::from_white_alpha((70.0 + 90.0 * size / 3.2) as u8));
+        }
+    }
+}
+
+fn card_colors(i: usize) -> (Color32, Color32) {
+    const PAL: [((u8, u8, u8), (u8, u8, u8)); 5] = [
+        ((120, 150, 90), (60, 90, 60)),
+        ((240, 150, 190), (110, 70, 140)),
+        ((90, 160, 230), (50, 70, 150)),
+        ((230, 170, 80), (130, 70, 50)),
+        ((120, 110, 230), (50, 40, 120)),
+    ];
+    let ((a, b, c), (d, e, f)) = PAL[i % PAL.len()];
+    (Color32::from_rgb(a, b, c), Color32::from_rgb(d, e, f))
+}
+
+/// Simple abstract art for the cards: a big faint snowflake plus a few drifting flakes.
+fn paint_card_art(painter: &egui::Painter, rect: Rect, i: usize, t: f32) {
+    let center = pos2(rect.center().x + (t * 0.3 + i as f32).sin() * 6.0, rect.top() + rect.height() * 0.38);
+    glass::paint_snowflake(painter, center, rect.height() * 0.26, Color32::from_white_alpha(70));
+}
+
+/// (subtitle, is_legacy) for a version id.
+fn version_info(id: &str) -> (&'static str, bool) {
+    match id {
+        "1.8.9" => ("Legacy PvP - 1.8 combat", true),
+        "1.21.10" => ("Modern PvP - 1.21.10", false),
+        "1.21.11" => ("Modern PvP - 1.21.11", false),
+        "26.1.2" => ("Latest - 26.1.2", false),
+        "26.2" => ("Newest - 26.2", false),
+        _ => ("Custom version", false),
     }
 }
 
@@ -879,4 +1172,10 @@ fn spawn_frost_services(
             tokio::time::sleep(Duration::from_secs(5)).await;
         }
     });
+}
+
+// `Pos2` is used by helper signatures in doc examples; keep the import meaningful.
+#[allow(dead_code)]
+fn _origin() -> Pos2 {
+    pos2(0.0, 0.0)
 }
