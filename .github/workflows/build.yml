@@ -30,9 +30,9 @@ jobs:
             pkg-config libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev \
             libxrandr-dev libxi-dev libxcb1-dev libgl1-mesa-dev libegl1-mesa-dev
       - name: Unit tests
-        run: cargo test --release
+        run: bash ci/run.sh cargo test --release
       - name: Build
-        run: cargo build --release
+        run: bash ci/run.sh cargo build --release
       - name: Package AppImage
         run: |
           VERSION=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
@@ -51,7 +51,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build
-        run: cargo build --release
+        shell: bash
+        run: bash ci/run.sh cargo build --release
       - name: Installer (NSIS)
         shell: pwsh
         run: |
