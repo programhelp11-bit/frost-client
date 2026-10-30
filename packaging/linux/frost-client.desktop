@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Frost Client
+Comment=Liquid glass Minecraft PvP launcher
+Exec=frost-launcher
+Icon=frost-client
+Categories=Game;
+StartupWMClass=frost-launcher
+Terminal=false

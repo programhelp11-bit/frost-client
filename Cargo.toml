@@ -1,0 +1,61 @@
+[package]
+name = "frost-client"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+description = "Frost Client - liquid glass Minecraft PvP launcher & client runtime"
+license = "MIT"
+
+[lib]
+name = "frost_client"
+path = "src/lib.rs"
+
+[[bin]]
+name = "frost-launcher"
+path = "src/main.rs"
+
+[dependencies]
+# async runtime + networking
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "process", "time", "sync", "io-util", "net"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "multipart", "stream"] }
+futures = "0.3"
+
+# (de)serialisation, errors, logging
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+thiserror = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# GUI
+eframe = { version = "0.29", default-features = false, features = ["glow", "default_fonts", "x11", "wayland"] }
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
+open = "5"
+
+# files / hashing / images
+dirs = "5"
+sha1 = "0.10"
+hex = "0.4"
+image = { version = "0.25", default-features = false, features = ["png"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# misc
+rand = "0.8"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[target.'cfg(windows)'.dependencies]
+window-vibrancy = "0.5"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 1
