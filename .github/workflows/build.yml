@@ -43,6 +43,28 @@ jobs:
           path: dist/*.AppImage
           if-no-files-found: error
 
+  agent:
+    name: Fabric agent (test + mods)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+      - name: Build + test
+        run: bash ci/run.sh gradle -p agent build --stacktrace
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FrostClient-fabric-mods
+          path: |
+            agent/mc-*/build/libs/frost-fabric-*.jar
+            !agent/mc-*/build/libs/*-sources.jar
+          if-no-files-found: error
+
   windows:
     name: Windows (build + installer)
     runs-on: windows-latest

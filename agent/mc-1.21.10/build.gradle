@@ -1,0 +1,38 @@
+plugins {
+    id 'fabric-loom'
+}
+
+base { archivesName = 'frost-fabric-1.21.10' }
+version = '0.1.0'
+
+repositories { mavenCentral() }
+
+dependencies {
+    minecraft "com.mojang:minecraft:1.21.10"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:0.18.1"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:0.138.4+1.21.10"
+}
+
+// The pure-Java protocol/state code and the shared Minecraft code are compiled into every
+// version-specific mod, so no jar-in-jar is needed.
+sourceSets {
+    main {
+        java {
+            srcDir '../core/src/main/java'
+            srcDir '../mc-common/src/main/java'
+        }
+    }
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') { expand 'version': project.version }
+}
+
+tasks.withType(JavaCompile).configureEach { options.release = 21 }
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}

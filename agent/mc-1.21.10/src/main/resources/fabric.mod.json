@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "frost_client",
+  "version": "${version}",
+  "name": "Frost Client",
+  "description": "Frost Client in-game runtime: glass HUD, QoL, trainer bots, tab snowflake.",
+  "environment": "client",
+  "entrypoints": { "client": [ "dev.frost.mc.Entry" ] },
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.10",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
