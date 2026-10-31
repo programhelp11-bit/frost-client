@@ -1002,8 +1002,12 @@ fn window_button(ui: &mut egui::Ui, kind: WinBtn) -> egui::Response {
     let c = rect.center();
     let s = Stroke::new(1.6, Color32::from_white_alpha(if resp.hovered() { 255 } else { 190 }));
     match kind {
-        WinBtn::Minimize => p.line_segment([c + vec2(-6.0, 4.0), c + vec2(6.0, 4.0)], s),
-        WinBtn::Maximize => p.rect_stroke(Rect::from_center_size(c, Vec2::splat(11.0)), 2.0, s),
+        WinBtn::Minimize => {
+            p.line_segment([c + vec2(-6.0, 4.0), c + vec2(6.0, 4.0)], s);
+        }
+        WinBtn::Maximize => {
+            p.rect_stroke(Rect::from_center_size(c, Vec2::splat(11.0)), 2.0, s);
+        }
         WinBtn::Close => {
             p.line_segment([c + vec2(-5.5, -5.5), c + vec2(5.5, 5.5)], s);
             p.line_segment([c + vec2(-5.5, 5.5), c + vec2(5.5, -5.5)], s);
