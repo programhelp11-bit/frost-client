@@ -54,7 +54,7 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.14.3"
+          gradle-version: "9.2.1"
       - name: Build + test
         run: bash ci/run.sh gradle -p agent build --stacktrace
       - uses: actions/upload-artifact@v4
