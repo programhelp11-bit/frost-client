@@ -6,7 +6,7 @@ out="$(mktemp)"
 "$@" 2>&1 | tee "$out"
 status=${PIPESTATUS[0]}
 if [ "$status" -ne 0 ]; then
-  grep -E -A7 '^error|panicked at|^---- .* stdout ----|FAILED' "$out" | head -150 | tr -d '\r' | while IFS= read -r line; do
+  sed 's/\x1b\[[0-9;]*m//g' "$out" | grep -E -A7 '^error|panicked at|^---- .* stdout ----|FAILED' | head -150 | tr -d '\r' | while IFS= read -r line; do
     printf '::error::%s\n' "${line:0:900}"
   done
 fi
