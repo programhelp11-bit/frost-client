@@ -3,7 +3,7 @@ package dev.frost.mc;
 import dev.frost.core.FrostState;
 import dev.frost.core.Models;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.ParticleStatus;
+import net.minecraft.server.level.ParticleStatus;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
