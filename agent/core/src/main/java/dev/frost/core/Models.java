@@ -50,8 +50,8 @@ public final class Models {
         public static HudLayout defaults() {
             HudLayout l = new HudLayout();
             String[] kinds = {"cps", "fps", "ping", "keystrokes", "armor_status", "potion_status",
-                "direction", "reach_display", "coordinates"};
-            boolean[] on = {true, true, true, true, false, false, false, false, false};
+                "direction", "reach_display", "coordinates", "bw_resources", "bw_blocks", "bridge_speed"};
+            boolean[] on = {true, true, true, true, false, false, false, false, false, false, false, false};
             float y = 6f;
             for (int i = 0; i < kinds.length; i++) {
                 l.widgets.add(new Widget(kinds[i], on[i], 6f, y));
@@ -131,6 +131,9 @@ public final class Models {
         public Float last_reach;
         public double[] pos = new double[] {0, 0, 0};
         public String biome = "";
+        // Bedwars
+        public int bw_iron, bw_gold, bw_diamond, bw_emerald, bw_blocks;
+        public float bridge_bps, bridge_best;
     }
 
     public static final class KbProfile {

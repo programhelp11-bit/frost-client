@@ -1,0 +1,8 @@
+[{
+  "modid": "frostclient",
+  "name": "Frost Client",
+  "description": "Frost Client HUD, trainer bots and tab snowflake.",
+  "version": "${version}",
+  "mcversion": "1.8.9",
+  "authorList": ["Frost"]
+}]

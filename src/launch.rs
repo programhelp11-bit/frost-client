@@ -10,6 +10,7 @@ use serde_json::Value;
 use crate::auth::Account;
 use crate::config::{data_dir, Settings};
 use crate::downloader::{download_all, Job, Progress};
+use crate::{java, modloader};
 use crate::versions::{self, rules_allow, AssetIndex, VersionJson};
 
 const ASSET_BASE: &str = "https://resources.download.minecraft.net";
@@ -18,6 +19,8 @@ pub struct LaunchPlan {
     pub java: String,
     pub args: Vec<String>,
     pub game_dir: PathBuf,
+    /// Non-fatal problems (e.g. the Frost mod jar was not bundled).
+    pub warnings: Vec<String>,
 }
 
 fn cp_separator() -> &'static str {
@@ -53,6 +56,21 @@ pub async fn prepare(
     tokio::fs::create_dir_all(&game_dir).await?;
 
     let ver: VersionJson = versions::fetch_version(http, version_id).await?;
+    let mods_dir = game_dir.join("mods");
+    let mut warnings: Vec<String> = Vec::new();
+
+    // Mod loader (Fabric / Forge), Fabric API and the Frost mod itself.
+    let mut patch = modloader::prepare(http, version_id, &mods_dir)
+        .await
+        .with_context(|| format!("install mod loader for {version_id}"))?;
+    warnings.append(&mut patch.warnings);
+    match modloader::install_frost_mod(version_id, &mods_dir) {
+        Ok(true) => {}
+        Ok(false) => warnings.push(format!(
+            "Frost mod for {version_id} was not found - the game starts without Frost HUD/bots."
+        )),
+        Err(e) => warnings.push(format!("could not install Frost mod: {e:#}")),
+    }
 
     // --- phase 1: client jar, libraries, asset index -------------------------------------------
     let client_jar = ver_dir.join(format!("{version_id}.jar"));
@@ -106,6 +124,17 @@ pub async fn prepare(
             }
         }
     }
+
+    // Loader libraries go first on the classpath so they win over vanilla duplicates.
+    let mut loader_cp: Vec<PathBuf> = Vec::new();
+    for lib in std::mem::take(&mut patch.libs) {
+        loader_cp.push(lib.path.clone());
+        if !lib.url.is_empty() {
+            jobs.push(lib);
+        }
+    }
+    jobs.append(&mut patch.mod_downloads);
+    classpath.splice(0..0, loader_cp);
 
     let index_path = assets_dir.join("indexes").join(format!("{}.json", ver.asset_index.id));
     jobs.push(Job {
@@ -170,16 +199,10 @@ pub async fn prepare(
     jvm.push(format!("-Xms{}M", settings.ram_mb.min(512)));
     jvm.extend(settings.jvm_args.split_whitespace().map(str::to_owned));
 
-    // Frost in-game agent (Java side of the IPC bridge), only when installed.
-    let agent = root.join("frost-agent.jar");
-    if agent.exists() {
-        jvm.push(format!(
-            "-javaagent:{}=port={},uuid={}",
-            agent.display(),
-            settings.ipc_port,
-            account.uuid
-        ));
-    }
+    // The Frost mod reads these to find the launcher's IPC bridge.
+    jvm.push(format!("-Dfrost.ipc.port={}", settings.ipc_port));
+    jvm.push(format!("-Dfrost.uuid={}", account.uuid));
+    jvm.extend(patch.jvm_args.iter().map(|a| a.trim().to_owned()).filter(|a| !a.is_empty()));
 
     let mut game: Vec<String> = Vec::new();
     if let Some(args) = &ver.arguments {
@@ -189,17 +212,30 @@ pub async fn prepare(
         jvm.push("-Djava.library.path=${natives_directory}".into());
         jvm.push("-cp".into());
         jvm.push("${classpath}".into());
-        if let Some(legacy) = &ver.minecraft_arguments {
+        let legacy = patch.legacy_args.clone().or_else(|| ver.minecraft_arguments.clone());
+        if let Some(legacy) = legacy {
             game.extend(legacy.split_whitespace().map(str::to_owned));
         }
     }
+    game.extend(patch.game_args.iter().cloned());
 
     let mut args: Vec<String> = jvm.into_iter().map(|a| substitute(&a, &vars)).collect();
-    args.push(ver.main_class.clone());
+    args.push(patch.main_class.clone().unwrap_or_else(|| ver.main_class.clone()));
     args.extend(game.into_iter().map(|a| substitute(&a, &vars)));
 
-    let java = find_java(settings)?;
-    Ok(LaunchPlan { java, args, game_dir })
+    let java = if settings.java_path.trim().is_empty() {
+        let major = ver.java_version.as_ref().map(|j| j.major_version).unwrap_or(8);
+        match java::ensure_java(http, major).await {
+            Ok(p) => p,
+            Err(e) => {
+                warnings.push(format!("automatic Java {major} download failed ({e:#}); using system Java"));
+                find_java(settings)?
+            }
+        }
+    } else {
+        find_java(settings)?
+    };
+    Ok(LaunchPlan { java, args, game_dir, warnings })
 }
 
 /// Start the game. stdout/stderr go to `<instance>/frost-latest.log`.

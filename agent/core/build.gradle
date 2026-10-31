@@ -19,3 +19,5 @@ test {
     useJUnitPlatform()
     testLogging { events 'failed'; exceptionFormat 'full' }
 }
+
+tasks.withType(JavaCompile).configureEach { options.release = 8 }

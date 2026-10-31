@@ -94,16 +94,21 @@ public final class Bots {
         e.setCustomName(Component.literal(cfg.name));
         e.setCustomNameVisible(true);
 
-        e.setItemSlot(EquipmentSlot.HEAD, new ItemStack(Items.NETHERITE_HELMET));
-        e.setItemSlot(EquipmentSlot.CHEST, new ItemStack(Items.NETHERITE_CHESTPLATE));
-        e.setItemSlot(EquipmentSlot.LEGS, new ItemStack(Items.NETHERITE_LEGGINGS));
-        e.setItemSlot(EquipmentSlot.FEET, new ItemStack(Items.NETHERITE_BOOTS));
+        boolean bw = cfg.style.equals("bedwars_rush");
+        e.setItemSlot(EquipmentSlot.HEAD, new ItemStack(bw ? Items.LEATHER_HELMET : Items.NETHERITE_HELMET));
+        e.setItemSlot(EquipmentSlot.CHEST, new ItemStack(bw ? Items.IRON_CHESTPLATE : Items.NETHERITE_CHESTPLATE));
+        e.setItemSlot(EquipmentSlot.LEGS, new ItemStack(bw ? Items.IRON_LEGGINGS : Items.NETHERITE_LEGGINGS));
+        e.setItemSlot(EquipmentSlot.FEET, new ItemStack(bw ? Items.IRON_BOOTS : Items.NETHERITE_BOOTS));
         switch (cfg.style) {
             case "axe_shield" -> {
                 e.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.NETHERITE_AXE));
                 e.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.SHIELD));
             }
             case "mace" -> e.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.MACE));
+            case "bedwars_rush" -> {
+                e.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_SWORD));
+                e.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.WHITE_WOOL, 32));
+            }
             case "crystal" -> e.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.END_CRYSTAL));
             default -> e.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.NETHERITE_SWORD));
         }

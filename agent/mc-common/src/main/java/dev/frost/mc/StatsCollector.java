@@ -111,6 +111,7 @@ public final class StatsCollector {
         }
 
         s.biome = mc.level.getBiome(p.blockPosition()).getRegisteredName();
+        Bedwars.fill(mc, s);
         latest = s;
     }
 }

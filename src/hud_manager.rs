@@ -1,16 +1,14 @@
-//! Liquid-glass HUD model, layout editor and renderer.
+//! HUD data model shared between the launcher UI and the in-game agent.
 //!
-//! The same widgets are drawn (a) in the launcher's HUD editor / live preview and (b) by the
-//! Frost overlay renderer; the in-game agent streams [`GameStats`] over the IPC bridge and
-//! receives the saved [`HudLayout`] + [`QolSettings`] from the launcher.
+//! The in-game agent streams [`GameStats`] over the IPC bridge and receives the saved
+//! [`HudLayout`] + [`QolSettings`] from the launcher. Rendering happens in the launcher's web UI
+//! (preview) and in the Java agent (in game).
 
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Vec2};
 use serde::{Deserialize, Serialize};
 
-use crate::glass;
 
 // ------------------------------------------------------------------------------------------------
 // Data model
@@ -28,10 +26,13 @@ pub enum HudKind {
     Direction,
     ReachDisplay,
     Coordinates,
+    BwResources,
+    BwBlocks,
+    BridgeSpeed,
 }
 
 impl HudKind {
-    pub const ALL: [HudKind; 9] = [
+    pub const ALL: [HudKind; 12] = [
         HudKind::Cps,
         HudKind::Fps,
         HudKind::Ping,
@@ -41,6 +42,9 @@ impl HudKind {
         HudKind::Direction,
         HudKind::ReachDisplay,
         HudKind::Coordinates,
+        HudKind::BwResources,
+        HudKind::BwBlocks,
+        HudKind::BridgeSpeed,
     ];
 
     pub fn label(self) -> &'static str {
@@ -54,6 +58,9 @@ impl HudKind {
             HudKind::Direction => "Direction",
             HudKind::ReachDisplay => "Reach",
             HudKind::Coordinates => "Coordinates / Biome",
+            HudKind::BwResources => "Bedwars resources",
+            HudKind::BwBlocks => "Bedwars blocks",
+            HudKind::BridgeSpeed => "Bridge speed",
         }
     }
 }
@@ -167,6 +174,13 @@ pub struct GameStats {
     pub last_reach: Option<f32>,
     pub pos: [f64; 3],
     pub biome: String,
+    pub bw_iron: u32,
+    pub bw_gold: u32,
+    pub bw_diamond: u32,
+    pub bw_emerald: u32,
+    pub bw_blocks: u32,
+    pub bridge_bps: f32,
+    pub bridge_best: f32,
 }
 
 impl GameStats {
@@ -192,6 +206,13 @@ impl GameStats {
             last_reach: Some(2.94),
             pos: [124.5, 64.0, -310.2],
             biome: "Plains".into(),
+            bw_iron: 64,
+            bw_gold: 12,
+            bw_diamond: 3,
+            bw_emerald: 1,
+            bw_blocks: 96,
+            bridge_bps: 7.4,
+            bridge_best: 9.1,
         }
     }
 }
@@ -240,189 +261,6 @@ pub fn compass(yaw: f32) -> &'static str {
     let norm = yaw.rem_euclid(360.0);
     let idx = ((norm + 11.25) / 22.5) as usize % 16;
     NAMES[idx]
-}
-
-// ------------------------------------------------------------------------------------------------
-// Rendering
-// ------------------------------------------------------------------------------------------------
-
-fn text_size(scale: f32) -> f32 {
-    15.0 * scale
-}
-
-/// Render all enabled HUD widgets. In `edit` mode widgets can be dragged and snap to the grid.
-/// Widget positions are relative to `bounds.min` (the game viewport / preview rectangle).
-/// Returns `true` if the layout changed this frame (so the caller can persist it).
-pub fn render_hud(
-    ctx: &egui::Context,
-    layout: &mut HudLayout,
-    stats: &GameStats,
-    edit: bool,
-    bounds: Rect,
-) -> bool {
-    let mut changed = false;
-    let grid = layout.snap_grid.max(1.0);
-
-    for (i, w) in layout.widgets.iter_mut().enumerate() {
-        if !w.enabled {
-            continue;
-        }
-        let id = egui::Id::new(("frost_hud", i));
-        let area = egui::Area::new(id)
-            .order(egui::Order::Foreground)
-            .fixed_pos(Pos2::new(bounds.min.x + w.pos[0], bounds.min.y + w.pos[1]))
-            .show(ctx, |ui| {
-                let size = widget_contents(ui, w, stats);
-                let rect = Rect::from_min_size(ui.min_rect().min, size);
-                if edit {
-                    ui.painter().rect_stroke(
-                        rect.expand(3.0),
-                        10.0,
-                        egui::Stroke::new(1.0, glass::ACCENT),
-                    );
-                    return Some(ui.interact(rect, id.with("drag"), Sense::drag()));
-                }
-                None
-            });
-
-        if let Some(resp) = area.inner {
-            if resp.dragged() {
-                let delta = resp.drag_delta();
-                w.pos[0] += delta.x;
-                w.pos[1] += delta.y;
-                changed = true;
-            }
-            if resp.drag_stopped() {
-                w.pos[0] = (w.pos[0] / grid).round() * grid;
-                w.pos[1] = (w.pos[1] / grid).round() * grid;
-                changed = true;
-            }
-            if resp.hovered() {
-                // scroll wheel resizes the hovered widget in edit mode
-                let scroll = ctx.input(|i| i.raw_scroll_delta.y);
-                if scroll != 0.0 {
-                    w.scale = (w.scale + scroll.signum() * 0.05).clamp(0.6, 2.5);
-                    changed = true;
-                }
-            }
-        }
-        // keep widgets on screen
-        w.pos[0] = w.pos[0].clamp(0.0, (bounds.width() - 40.0).max(0.0));
-        w.pos[1] = w.pos[1].clamp(0.0, (bounds.height() - 30.0).max(0.0));
-    }
-    changed
-}
-
-/// Draws one widget; returns its size.
-fn widget_contents(ui: &mut egui::Ui, w: &HudWidget, s: &GameStats) -> Vec2 {
-    let frame = glass::glass_frame(w.opacity, 12.0 * w.scale)
-        .inner_margin(egui::Margin::symmetric(10.0 * w.scale, 6.0 * w.scale));
-    let sz = text_size(w.scale);
-    let out = frame.show(ui, |ui| {
-        ui.spacing_mut().item_spacing = Vec2::splat(3.0 * w.scale);
-        match w.kind {
-            HudKind::Cps => {
-                line(ui, "CPS", &format!("{} | {}", s.cps_left, s.cps_right), sz);
-            }
-            HudKind::Fps => line(ui, "FPS", &s.fps.to_string(), sz),
-            HudKind::Ping => line(ui, "Ping", &format!("{} ms", s.ping_ms), sz),
-            HudKind::Direction => line(ui, "Dir", &format!("{} {:.0}°", compass(s.yaw), s.yaw.rem_euclid(360.0)), sz),
-            HudKind::ReachDisplay => match s.last_reach {
-                Some(r) => line(ui, "Reach", &format!("{r:.2} m"), sz),
-                None => line(ui, "Reach", "-", sz),
-            },
-            HudKind::Coordinates => {
-                line(ui, "XYZ", &format!("{:.1} {:.1} {:.1}", s.pos[0], s.pos[1], s.pos[2]), sz);
-                if !s.biome.is_empty() {
-                    line(ui, "Biome", &s.biome, sz);
-                }
-            }
-            HudKind::Keystrokes => keystrokes(ui, &s.keys, w.scale),
-            HudKind::ArmorStatus => {
-                if s.armor.is_empty() {
-                    line(ui, "Armor", "none", sz);
-                }
-                for a in &s.armor {
-                    durability_row(ui, a, sz);
-                }
-            }
-            HudKind::PotionStatus => {
-                if s.potions.is_empty() {
-                    line(ui, "Effects", "none", sz);
-                }
-                for p in &s.potions {
-                    line(ui, &p.name, &format!("{}:{:02}", p.remaining_secs / 60, p.remaining_secs % 60), sz);
-                }
-            }
-        }
-    });
-    glass::decorate(ui.painter(), out.response.rect, 12.0 * w.scale);
-    out.response.rect.size()
-}
-
-fn line(ui: &mut egui::Ui, label: &str, value: &str, size: f32) {
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(label).size(size * 0.85).color(glass::TEXT_DIM));
-        ui.label(egui::RichText::new(value).size(size).strong().color(glass::TEXT));
-    });
-}
-
-fn durability_row(ui: &mut egui::Ui, a: &ArmorPiece, size: f32) {
-    ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(&a.name).size(size * 0.85).color(glass::TEXT_DIM));
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(size * 3.0, size * 0.45), Sense::hover());
-        let p = ui.painter();
-        p.rect_filled(rect, 4.0, Color32::from_white_alpha(25));
-        let mut fill = rect;
-        fill.set_width(rect.width() * a.durability_pct.clamp(0.0, 1.0));
-        let c = if a.durability_pct > 0.5 {
-            glass::ACCENT
-        } else if a.durability_pct > 0.2 {
-            Color32::from_rgb(255, 200, 90)
-        } else {
-            Color32::from_rgb(255, 100, 100)
-        };
-        p.rect_filled(fill, 4.0, c);
-    });
-}
-
-fn keystrokes(ui: &mut egui::Ui, k: &Keys, scale: f32) {
-    let cell = 34.0 * scale;
-    let gap = 4.0 * scale;
-    let total = Vec2::new(cell * 3.0 + gap * 2.0, cell * 2.0 + gap + cell * 0.7 + gap);
-    let (rect, _) = ui.allocate_exact_size(total, Sense::hover());
-    let p = ui.painter();
-    let key = |col: f32, row: f32, w_cells: f32, h: f32, label: &str, down: bool| {
-        let min = rect.min + Vec2::new(col * (cell + gap), row * (cell + gap));
-        let r = Rect::from_min_size(min, Vec2::new(cell * w_cells + gap * (w_cells - 1.0), h));
-        let fill = if down {
-            Color32::from_rgba_unmultiplied(120, 200, 255, 150)
-        } else {
-            Color32::from_white_alpha(20)
-        };
-        p.rect_filled(r, 8.0, fill);
-        p.rect_stroke(r, 8.0, egui::Stroke::new(1.0, Color32::from_white_alpha(if down { 140 } else { 45 })));
-        p.text(r.center(), Align2::CENTER_CENTER, label, FontId::proportional(13.0 * scale), glass::TEXT);
-    };
-    key(1.0, 0.0, 1.0, cell, "W", k.w);
-    key(0.0, 1.0, 1.0, cell, "A", k.a);
-    key(1.0, 1.0, 1.0, cell, "S", k.s);
-    key(2.0, 1.0, 1.0, cell, "D", k.d);
-    let row2 = 2.0 * (cell + gap);
-    let half = (cell * 3.0 + gap * 2.0 - gap) / 2.0;
-    let mouse = |x: f32, label: &str, down: bool| {
-        let r = Rect::from_min_size(rect.min + Vec2::new(x, row2), Vec2::new(half, cell * 0.7));
-        let fill = if down {
-            Color32::from_rgba_unmultiplied(120, 200, 255, 150)
-        } else {
-            Color32::from_white_alpha(20)
-        };
-        p.rect_filled(r, 8.0, fill);
-        p.rect_stroke(r, 8.0, egui::Stroke::new(1.0, Color32::from_white_alpha(if down { 140 } else { 45 })));
-        p.text(r.center(), Align2::CENTER_CENTER, label, FontId::proportional(12.0 * scale), glass::TEXT);
-    };
-    mouse(0.0, "LMB", k.lmb);
-    mouse(half + gap, "RMB", k.rmb);
 }
 
 #[cfg(test)]

@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -17,24 +18,24 @@ public final class Dispatcher {
 
     public static void handle(FrostState state, JsonObject msg) {
         if (!msg.has("type")) return;
-        switch (msg.get("type").getAsString()) {
-            case "settings" -> {
-                if (msg.has("qol")) state.qol = GSON.fromJson(msg.get("qol"), Models.Qol.class);
-                if (msg.has("hud")) state.hud = GSON.fromJson(msg.get("hud"), Models.HudLayout.class);
-            }
-            case "cosmetics" -> {
-                Map<String, Models.CosmeticEntry> players = GSON.fromJson(msg.get("players"), PLAYERS);
-                state.cosmetics = players == null ? Map.of() : players;
-            }
-            case "spawn_bot" -> state.spawnQueue.add(GSON.fromJson(msg.get("bot"), Models.BotConfig.class));
-            case "clear_bots" -> state.clearBots.set(true);
-            case "knockback_trainer" -> {
-                state.knockbackTrainer = msg.get("enabled").getAsBoolean();
-                if (msg.has("profile")) state.kbProfile = GSON.fromJson(msg.get("profile"), Models.KbProfile.class);
-            }
-            case "bot_command" -> state.botCommands.put(
-                msg.get("id").getAsInt(), GSON.fromJson(msg.get("command"), Models.BotCommand.class));
-            default -> { }
+        String type = msg.get("type").getAsString();
+        if (type.equals("settings")) {
+            if (msg.has("qol")) state.qol = GSON.fromJson(msg.get("qol"), Models.Qol.class);
+            if (msg.has("hud")) state.hud = GSON.fromJson(msg.get("hud"), Models.HudLayout.class);
+        } else if (type.equals("cosmetics")) {
+            Map<String, Models.CosmeticEntry> players = GSON.fromJson(msg.get("players"), PLAYERS);
+            state.cosmetics = players == null ? Collections.<String, Models.CosmeticEntry>emptyMap() : players;
+        } else if (type.equals("spawn_bot")) {
+            state.spawnQueue.add(GSON.fromJson(msg.get("bot"), Models.BotConfig.class));
+        } else if (type.equals("clear_bots")) {
+            state.clearBots.set(true);
+        } else if (type.equals("knockback_trainer")) {
+            state.knockbackTrainer = msg.get("enabled").getAsBoolean();
+            if (msg.has("profile")) state.kbProfile = GSON.fromJson(msg.get("profile"), Models.KbProfile.class);
+        } else if (type.equals("bot_command")) {
+            state.botCommands.put(msg.get("id").getAsInt(), GSON.fromJson(msg.get("command"), Models.BotCommand.class));
+        } else if (type.equals("bedwars")) {
+            state.bedwarsBridgeTrainer = msg.has("bridge_trainer") && msg.get("bridge_trainer").getAsBoolean();
         }
     }
 

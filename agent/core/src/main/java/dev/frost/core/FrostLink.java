@@ -57,7 +57,7 @@ public final class FrostLink {
                 String line;
                 while (running && (line = in.readLine()) != null) {
                     try {
-                        Dispatcher.handle(state, JsonParser.parseString(line).getAsJsonObject());
+                        Dispatcher.handle(state, new JsonParser().parse(line).getAsJsonObject());
                     } catch (RuntimeException bad) {
                         // ignore malformed lines, keep the connection
                     }

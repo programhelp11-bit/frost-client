@@ -77,11 +77,17 @@ pub enum CombatStyle {
     Crystal,
     AxeShield,
     Mace,
+    BedwarsRush,
 }
 
 impl CombatStyle {
-    pub const ALL: [CombatStyle; 4] =
-        [CombatStyle::Sword, CombatStyle::Crystal, CombatStyle::AxeShield, CombatStyle::Mace];
+    pub const ALL: [CombatStyle; 5] = [
+        CombatStyle::Sword,
+        CombatStyle::Crystal,
+        CombatStyle::AxeShield,
+        CombatStyle::Mace,
+        CombatStyle::BedwarsRush,
+    ];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -89,13 +95,14 @@ impl CombatStyle {
             CombatStyle::Crystal => "Crystal PvP",
             CombatStyle::AxeShield => "Axe & Shield",
             CombatStyle::Mace => "Mace",
+            CombatStyle::BedwarsRush => "Bedwars Rush",
         }
     }
 
     /// 1.9+ attack interval in seconds for a fully charged hit.
     fn cooldown_secs(self) -> f32 {
         match self {
-            CombatStyle::Sword => 0.625,
+            CombatStyle::Sword | CombatStyle::BedwarsRush => 0.625,
             CombatStyle::Crystal => 0.625,
             CombatStyle::AxeShield => 1.0,
             CombatStyle::Mace => 1.7,

@@ -27,6 +27,7 @@ pub enum ToGame {
     ClearBots,
     KnockbackTrainer { enabled: bool, profile: KbProfile },
     BotCommand { id: u32, command: Command },
+    Bedwars { bridge_trainer: bool },
 }
 
 /// Game -> launcher

@@ -12,8 +12,9 @@ public final class FrostState {
 
     public volatile Models.Qol qol = new Models.Qol();
     public volatile Models.HudLayout hud = Models.HudLayout.defaults();
-    public volatile Map<String, Models.CosmeticEntry> cosmetics = Map.of();
+    public volatile Map<String, Models.CosmeticEntry> cosmetics = java.util.Collections.emptyMap();
     public volatile boolean knockbackTrainer;
+    public volatile boolean bedwarsBridgeTrainer;
     public volatile Models.KbProfile kbProfile = new Models.KbProfile();
 
     public final Queue<Models.BotConfig> spawnQueue = new ConcurrentLinkedQueue<>();

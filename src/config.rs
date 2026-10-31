@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
@@ -34,12 +35,18 @@ pub struct Settings {
     pub ipc_port: u16,
     pub hud: HudLayout,
     pub qol: QolSettings,
+    /// Unix seconds of the last launch per Minecraft version.
+    pub last_played: HashMap<String, u64>,
+    /// What the launcher window does while the game runs: "keep" | "hide".
+    pub while_playing: String,
+    /// Falling snowflakes in the launcher background.
+    pub snow: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            selected_version: "1.8.9".into(),
+            selected_version: "1.21.11".into(),
             ram_mb: 3072,
             jvm_args: "-XX:+UseG1GC -XX:MaxGCPauseMillis=50 -XX:+DisableExplicitGC".into(),
             java_path: String::new(),
@@ -48,6 +55,9 @@ impl Default for Settings {
             ipc_port: 25585,
             hud: HudLayout::default(),
             qol: QolSettings::default(),
+            last_played: HashMap::new(),
+            while_playing: "keep".into(),
+            snow: true,
         }
     }
 }

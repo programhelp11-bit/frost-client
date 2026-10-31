@@ -17,7 +17,7 @@ import java.util.List;
 public final class FrostHud {
     private static final int TEXT = 0xFFEAF2FF;
     private static final int DIM = 0xFFA0AFC8;
-    private static final int ACCENT = 0xFF78C8FF;
+    private static final int ACCENT = 0xFF8FD3FF;
 
     private FrostHud() {}
 
@@ -43,7 +43,7 @@ public final class FrostHud {
     }
 
     private static void draw(GuiGraphics g, Font font, Minecraft mc, Models.Widget w, Models.Stats s, Models.Qol q) {
-        int tint = (Math.max(20, Math.min(240, w.opacity)) << 24) | 0x121A2A;
+        int tint = (Math.max(20, Math.min(240, w.opacity)) << 24) | 0x0E204E;
         switch (w.kind) {
             case "keystrokes" -> keystrokes(g, font, s.keys, tint);
             case "armor_status" -> armor(g, font, mc, tint);
@@ -64,6 +64,17 @@ public final class FrostHud {
                         if (q.show_biome && !s.biome.isEmpty()) {
                             rows.add(new String[] {"Biome", prettyBiome(s.biome)});
                         }
+                    }
+                    case "bw_resources" -> {
+                        rows.add(new String[] {"Iron", String.valueOf(s.bw_iron)});
+                        rows.add(new String[] {"Gold", String.valueOf(s.bw_gold)});
+                        rows.add(new String[] {"Diamond", String.valueOf(s.bw_diamond)});
+                        rows.add(new String[] {"Emerald", String.valueOf(s.bw_emerald)});
+                    }
+                    case "bw_blocks" -> rows.add(new String[] {"Blocks", String.valueOf(s.bw_blocks)});
+                    case "bridge_speed" -> {
+                        rows.add(new String[] {"Bridge", String.format("%.2f b/s", s.bridge_bps)});
+                        rows.add(new String[] {"Best", String.format("%.2f b/s", s.bridge_best)});
                     }
                     case "potion_status" -> {
                         if (s.potions.isEmpty()) rows.add(new String[] {"Effects", "none"});
@@ -130,25 +141,31 @@ public final class FrostHud {
     }
 
     private static void key(GuiGraphics g, Font font, int x, int y, int w, int h, String label, boolean down) {
-        int fill = down ? 0x9678C8FF : 0x66121A2A;
-        roundedFill(g, x, y, w, h, 3, fill);
-        border(g, x, y, w, h, down ? 0xB4FFFFFF : 0x38FFFFFF);
+        int fill = down ? 0xB48FD3FF : 0x660E204E;
+        g.fill(x, y, x + w, y + h, fill);
+        border(g, x, y, w, h, down ? 0xFFBFE6FF : 0x906EAAFF);
         g.drawString(font, label, x + (w - font.width(label)) / 2, y + (h - font.lineHeight) / 2 + 1, TEXT);
     }
 
-    /** Glass card: tinted fill, light border and a specular top edge. */
+    /** Flat frost panel: blue tint, 1px blue border and a tiny snowflake in the corner. */
     private static void panel(GuiGraphics g, int x, int y, int w, int h, int tint) {
-        roundedFill(g, x, y, w, h, 3, tint);
-        g.fill(x + 3, y, x + w - 3, y + 1, 0x66FFFFFF);
-        g.fill(x + 3, y + 1, x + w - 3, y + 2, 0x16FFFFFF);
-        border(g, x, y, w, h, 0x3CFFFFFF);
+        g.fill(x, y, x + w, y + h, tint);
+        border(g, x, y, w, h, 0x8C6EAAFF);
+        if (w >= 26) snowflake(g, x + w - 8, y + 2);
+    }
+
+    /** 5x5 pixel snowflake, drawn with fills so it does not depend on font glyphs. */
+    private static void snowflake(GuiGraphics g, int x, int y) {
+        final int c = 0xB4BFE6FF;
+        int[][] px = {{2,0},{2,1},{2,2},{2,3},{2,4},{0,2},{1,2},{3,2},{4,2},{0,0},{1,1},{3,3},{4,4},{4,0},{3,1},{1,3},{0,4}};
+        for (int[] p : px) g.fill(x + p[0], y + p[1], x + p[0] + 1, y + p[1] + 1, c);
     }
 
     private static void border(GuiGraphics g, int x, int y, int w, int h, int color) {
-        g.fill(x + 3, y, x + w - 3, y + 1, color);
-        g.fill(x + 3, y + h - 1, x + w - 3, y + h, color);
-        g.fill(x, y + 3, x + 1, y + h - 3, color);
-        g.fill(x + w - 1, y + 3, x + w, y + h - 3, color);
+        g.fill(x, y, x + w, y + 1, color);
+        g.fill(x, y + h - 1, x + w, y + h, color);
+        g.fill(x, y + 1, x + 1, y + h - 1, color);
+        g.fill(x + w - 1, y + 1, x + w, y + h - 1, color);
     }
 
     private static void roundedFill(GuiGraphics g, int x, int y, int w, int h, int r, int color) {

@@ -1,3 +1,6 @@
 /target
 /dist
 *.frost-part
+/src-tauri/gen
+/src-tauri/agent/*.jar
+node_modules

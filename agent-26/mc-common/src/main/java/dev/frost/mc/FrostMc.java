@@ -1,0 +1,71 @@
+package dev.frost.mc;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import dev.frost.core.Dispatcher;
+import dev.frost.core.FrostLink;
+import dev.frost.core.FrostState;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.minecraft.client.Minecraft;
+
+/** Shared bootstrap: starts the launcher link and drives all per-tick features. */
+public final class FrostMc {
+    private static FrostLink link;
+    private static int ticks;
+    private static String mcVersion = "?";
+
+    private FrostMc() {}
+
+    public static FrostLink link() {
+        return link;
+    }
+
+    public static void init(String version) {
+        mcVersion = version;
+        int port = Integer.getInteger("frost.ipc.port", 25585);
+        link = new FrostLink("127.0.0.1", port, FrostState.INSTANCE, FrostMc::hello);
+        link.start();
+        ClientTickEvents.END_CLIENT_TICK.register(FrostMc::tick);
+    }
+
+    private static JsonObject hello() {
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "hello");
+        Minecraft mc = Minecraft.getInstance();
+        o.addProperty("uuid", System.getProperty("frost.uuid", ""));
+        o.addProperty("name", mc.getUser().getName());
+        o.addProperty("version", mcVersion);
+        return o;
+    }
+
+    private static void tick(Minecraft mc) {
+        ticks++;
+        StatsCollector.tick(mc);
+        QolApplier.tick(mc);
+        TabIcons.tick(mc, ticks);
+        Bots.tick(mc);
+
+        if (ticks % 2 == 0 && link.connected() && mc.player != null) {
+            JsonObject msg = new JsonObject();
+            msg.addProperty("type", "stats");
+            msg.add("stats", Dispatcher.gson().toJsonTree(StatsCollector.latest));
+            link.send(msg);
+        }
+    }
+
+    static void sendTabPlayers(java.util.Collection<String> uuids) {
+        JsonObject msg = new JsonObject();
+        msg.addProperty("type", "tab_players");
+        JsonArray arr = new JsonArray();
+        uuids.forEach(arr::add);
+        msg.add("uuids", arr);
+        link.send(msg);
+    }
+
+    static void sendKnockbackEvent(boolean landed) {
+        JsonObject msg = new JsonObject();
+        msg.addProperty("type", "knockback_event");
+        msg.addProperty("landed", landed);
+        link.send(msg);
+    }
+}
