@@ -38,7 +38,7 @@ public final class StatsCollector {
             lastSecond = now;
         }
         long window = GLFW.glfwGetCurrentContext();
-        if (window == 0L || mc.screen != null || mc.player == null) {
+        if (window == 0L || !mc.mouseHandler.isMouseGrabbed() || mc.player == null) {
             lastL = false;
             lastR = false;
             return;

@@ -45,7 +45,7 @@ public final class QolApplier {
 
         // --- zoom (hold the configured key) --------------------------------------------------------
         boolean wantZoom = false;
-        if (q.zoom_enabled && mc.screen == null) {
+        if (q.zoom_enabled && mc.mouseHandler.isMouseGrabbed()) {
             long window = GLFW.glfwGetCurrentContext();
             int key = glfwKey(q.zoom_key);
             wantZoom = window != 0L && key > 0 && GLFW.glfwGetKey(window, key) == GLFW.GLFW_PRESS;

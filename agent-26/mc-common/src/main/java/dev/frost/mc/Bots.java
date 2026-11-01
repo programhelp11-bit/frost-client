@@ -107,7 +107,7 @@ public final class Bots {
             case "mace" -> e.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.MACE));
             case "bedwars_rush" -> {
                 e.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.IRON_SWORD));
-                e.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.WHITE_WOOL, 32));
+                e.setItemSlot(EquipmentSlot.OFFHAND, new ItemStack(Items.COBBLESTONE, 32));
             }
             case "crystal" -> e.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.END_CRYSTAL));
             default -> e.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(Items.NETHERITE_SWORD));
