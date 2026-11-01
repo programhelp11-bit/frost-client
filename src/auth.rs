@@ -26,9 +26,6 @@ const XBL_URL: &str = "https://user.auth.xboxlive.com/user/authenticate";
 const XSTS_URL: &str = "https://xsts.auth.xboxlive.com/xsts/authorize";
 const MC_LOGIN_URL: &str = "https://api.minecraftservices.com/authentication/login_with_xbox";
 const MC_PROFILE_URL: &str = "https://api.minecraftservices.com/minecraft/profile";
-/// Public Azure application (client) id of Frost Client. Not a secret; used when the build
-/// has no `FROST_MS_CLIENT_ID` and the user did not override it.
-pub const DEFAULT_CLIENT_ID: &str = "00000000-0000-4000-8000-000000000000";
 const SCOPE: &str = "XboxLive.signin offline_access";
 
 #[derive(Debug, Clone, Deserialize)]
@@ -309,7 +306,6 @@ fn client_id_candidates(settings_override: &str) -> Vec<String> {
         v.push(id.trim().to_owned());
     }
     v.retain(|s| !s.is_empty());
-    v.push(DEFAULT_CLIENT_ID.to_owned());
     v
 }
 
@@ -526,7 +522,7 @@ mod tests {
 
     #[test]
     fn client_id_must_be_a_guid() {
-        assert!(is_valid_client_id("3f2c1a9e-8b4d-4c1e-9a77-0123456789ab"));
+        assert!(is_valid_client_id("00000000-0000-4000-8000-000000000000"));
         assert!(!is_valid_client_id("FROST"));
         assert!(!is_valid_client_id(""));
         assert!(!is_valid_client_id("3f2c1a9e-8b4d-4c1e-9a77-0123456789a"));
@@ -572,7 +568,7 @@ mod tests {
 
     #[test]
     fn settings_override_wins() {
-        assert_eq!(effective_client_id(" 3f2c1a9e-8b4d-4c1e-9a77-0123456789ab ").as_deref(), Some("3f2c1a9e-8b4d-4c1e-9a77-0123456789ab"));
+        assert_eq!(effective_client_id(" 00000000-0000-4000-8000-000000000000 ").as_deref(), Some("00000000-0000-4000-8000-000000000000"));
     }
 
     #[test]

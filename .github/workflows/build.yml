@@ -12,8 +12,8 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # Public Azure application (client) id, set once under Settings > Variables > Actions.
-  FROST_MS_CLIENT_ID: ${{ vars.FROST_MS_CLIENT_ID }}
+  # Azure application (client) id, stored as an Actions *secret* so it never appears in the repo or logs.
+  FROST_MS_CLIENT_ID: ${{ secrets.FROST_MS_CLIENT_ID }}
 
 jobs:
   agent-fabric:
