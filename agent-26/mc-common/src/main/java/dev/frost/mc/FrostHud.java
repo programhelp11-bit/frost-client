@@ -24,7 +24,7 @@ public final class FrostHud {
     public static void render(GuiGraphicsExtractor g, DeltaTracker dt) {
         Minecraft mc = Minecraft.getInstance();
         StatsCollector.frame(mc);
-        if (mc.options.hideGui || mc.player == null) return;
+        if (mc.player == null) return;
 
         FrostState st = FrostState.INSTANCE;
         Models.Stats s = StatsCollector.latest;
