@@ -38,3 +38,11 @@ cargo test
 
 Packaging (done by CI): `packaging/windows/frost.nsi` (NSIS) and `packaging/linux/build-appimage.sh`.
 Tagging `vX.Y.Z` publishes both files as a GitHub release.
+
+## v1.0.0 notes
+
+* **Launcher**: Tauri 2 (HTML/CSS UI, bluish blur + snow). Pages: Home, Versions, Browse (Modrinth mods / resource packs / shaders installed straight into the instance), Cosmetics, HUD studio, Trainer, Settings.
+* **In game**: press **Right Shift** to open the Frost menu — drag/scale/hide HUD widgets, spawn trainer bots, knockback and Bedwars bridge trainers, quality-of-life toggles. Edits are saved by the launcher.
+* **Mods**: Fabric (1.21.10, 1.21.11, 26.1.2, 26.2) and Forge (1.8.9) builds are bundled; the launcher installs the loader, Fabric API and Java automatically.
+* **Microsoft login** needs your own Azure application: set the repository variable `FROST_MS_CLIENT_ID` to its *Application (client) ID* (a GUID, not a name) — see above — or paste it in Settings → Accounts.
+* **Known limits**: the game-side features were compiled and unit-tested in CI but not played-tested; capes rendering, hitboxes and item physics are not implemented yet; the Frost cosmetics backend (`docs/BACKEND_API.md`) is not provided.
