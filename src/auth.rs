@@ -26,6 +26,9 @@ const XBL_URL: &str = "https://user.auth.xboxlive.com/user/authenticate";
 const XSTS_URL: &str = "https://xsts.auth.xboxlive.com/xsts/authorize";
 const MC_LOGIN_URL: &str = "https://api.minecraftservices.com/authentication/login_with_xbox";
 const MC_PROFILE_URL: &str = "https://api.minecraftservices.com/minecraft/profile";
+/// Public Azure application (client) id of Frost Client. Not a secret; used when the build
+/// has no `FROST_MS_CLIENT_ID` and the user did not override it.
+pub const DEFAULT_CLIENT_ID: &str = "00000000-0000-4000-8000-000000000000";
 const SCOPE: &str = "XboxLive.signin offline_access";
 
 #[derive(Debug, Clone, Deserialize)]
@@ -233,11 +236,16 @@ pub async fn login_with_ms(http: &reqwest::Client, ms: &MsTokens) -> Result<Acco
         .uhs
         .clone();
 
-    let mc: McLogin = http
+    let mc_resp = http
         .post(MC_LOGIN_URL)
         .json(&json!({ "identityToken": format!("XBL3.0 x={uhs};{}", xsts.token) }))
         .send()
-        .await?
+        .await?;
+    if mc_resp.status() == reqwest::StatusCode::FORBIDDEN {
+        // Mojang rejects Azure apps that were not approved for the Minecraft API yet.
+        bail!("MC_APP_NOT_APPROVED");
+    }
+    let mc: McLogin = mc_resp
         .error_for_status()
         .context("Minecraft login_with_xbox")?
         .json()
@@ -301,6 +309,7 @@ fn client_id_candidates(settings_override: &str) -> Vec<String> {
         v.push(id.trim().to_owned());
     }
     v.retain(|s| !s.is_empty());
+    v.push(DEFAULT_CLIENT_ID.to_owned());
     v
 }
 

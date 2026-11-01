@@ -480,6 +480,10 @@ async function doLogin() {
         body: (bad ? `The configured ID <b>“${esc(bad)}”</b> is not valid — an Azure application ID is a GUID like <code>3f2c1a9e-8b4d-4c1e-9a77-0123456789ab</code>, not a name.<br><br>` : 'This build has no Microsoft application ID yet.<br><br>')
           + '<b>One-time setup (free, 2 minutes):</b><br>1. Open <b>portal.azure.com → App registrations → New registration</b><br>2. Supported account types: <b>Personal Microsoft accounts only</b><br>3. Redirect URI: platform <b>Mobile and desktop applications</b>, value <code>http://localhost</code><br>4. Copy the <b>Application (client) ID</b> and paste it below in Settings → Accounts (or set it as the <code>FROST_MS_CLIENT_ID</code> repo variable before building).<br><br>Your app must also be approved for Minecraft services: <b>aka.ms/AppRegInfo</b>.',
         actions: [{ label: 'Open settings', cls: 'btn', onClick: () => { S.page = 'settings'; S.settingsTab = 'accounts'; renderAll(); } }, { label: 'Close' }] });
+    } else if (String(e).includes('MC_APP_NOT_APPROVED')) {
+      modal({ title: 'Minecraft has not approved this app yet',
+        body: 'Microsoft login worked, but Mojang only allows approved Azure apps to sign in to Minecraft (HTTP 403).<br><br>Submit the form at <b>aka.ms/AppRegInfo</b> with your Application (client) ID. Approval can take a few days — after that, sign-in works without changing anything here.',
+        actions: [{ label: 'Close' }] });
     } else toast(e, 'err');
   }
   S.loggingIn = false; renderAll();

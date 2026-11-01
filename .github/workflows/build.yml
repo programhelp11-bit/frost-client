@@ -95,7 +95,12 @@ jobs:
           pattern: mod-*
           path: src-tauri/agent
           merge-multiple: true
-      - run: ls -la src-tauri/agent
+      - name: Flatten mod jars
+        run: |
+          find src-tauri/agent -mindepth 2 -name '*.jar' -exec mv {} src-tauri/agent/ \;
+          find src-tauri/agent -mindepth 1 -type d -empty -delete
+          ls -la src-tauri/agent
+          test "$(ls src-tauri/agent/*.jar | wc -l)" -ge 5
       - name: Unit tests
         run: bash ci/run.sh cargo test --release -p frost-client
       - name: Build AppImage
@@ -121,6 +126,13 @@ jobs:
           pattern: mod-*
           path: src-tauri/agent
           merge-multiple: true
+      - name: Flatten mod jars
+        shell: bash
+        run: |
+          find src-tauri/agent -mindepth 2 -name '*.jar' -exec mv {} src-tauri/agent/ \;
+          find src-tauri/agent -mindepth 1 -type d -empty -delete
+          ls -la src-tauri/agent
+          test "$(ls src-tauri/agent/*.jar | wc -l)" -ge 5
       - name: Build installer
         shell: bash
         run: bash ci/run.sh npx --yes @tauri-apps/cli@2 build --bundles nsis
