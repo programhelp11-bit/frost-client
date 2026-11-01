@@ -96,7 +96,7 @@ public final class FrostMc {
         boolean down = window != 0L
             && org.lwjgl.glfw.GLFW.glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
         if (down && !lastMenuKey && mc.mouseHandler.isMouseGrabbed() && mc.player != null) {
-            mc.setScreen(new FrostScreen());
+            mc.setScreenAndShow(new FrostScreen());
         }
         lastMenuKey = down;
     }

@@ -15,6 +15,7 @@ def convert(s):
     s = s.replace('mc.options.hideGui || ', '')
     s = s.replace('mc.screen == null', 'mc.mouseHandler.isMouseGrabbed()')
     s = s.replace('mc.screen != null', '!mc.mouseHandler.isMouseGrabbed()')
+    s = s.replace('mc.setScreen(', 'mc.setScreenAndShow(')
     s = s.replace('Items.WHITE_WOOL', 'Items.COBBLESTONE')
     return s
 
