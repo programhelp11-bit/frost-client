@@ -40,6 +40,12 @@ pub enum FromGame {
     /// Players currently in the tab list; the launcher resolves their Frost status.
     TabPlayers { uuids: Vec<String> },
     KnockbackEvent { landed: bool },
+    /// The player edited HUD / QoL in the in-game Frost menu; persisted by the launcher.
+    UiSettings { qol: QolSettings, hud: HudLayout },
+    /// Trainer menu: spawn a bot (the brain runs here).
+    RequestBot { style: crate::trainer::CombatStyle, difficulty: f32, legacy: bool },
+    /// Trainer menu: remove all bots.
+    RequestClearBots,
 }
 
 #[derive(Default)]
@@ -48,6 +54,8 @@ pub struct Shared {
     pub connected: bool,
     pub tab_players: Vec<String>,
     pub trainer: TrainerManager,
+    /// Settings edited in-game, waiting to be saved by the launcher shell.
+    pub pending_settings: Option<(QolSettings, HudLayout)>,
 }
 
 #[derive(Clone)]
@@ -67,6 +75,11 @@ impl IpcHandle {
 
     pub fn stats(&self) -> GameStats {
         self.shared.lock().unwrap().stats.clone()
+    }
+
+    /// Settings edited in the in-game menu since the last call.
+    pub fn take_settings(&self) -> Option<(QolSettings, HudLayout)> {
+        self.shared.lock().unwrap().pending_settings.take()
     }
 
     pub fn connected(&self) -> bool {
@@ -164,6 +177,18 @@ fn handle_message(msg: FromGame, h: &IpcHandle) -> Option<ToGame> {
             .trainer
             .tick(id, &obs)
             .map(|command| ToGame::BotCommand { id, command }),
+        FromGame::UiSettings { qol, hud } => {
+            shared.pending_settings = Some((qol, hud));
+            None
+        }
+        FromGame::RequestBot { style, difficulty, legacy } => {
+            let bot = shared.trainer.spawn("Frost Bot", style, difficulty.clamp(0.1, 1.0), legacy);
+            Some(ToGame::SpawnBot { bot })
+        }
+        FromGame::RequestClearBots => {
+            shared.trainer.clear();
+            Some(ToGame::ClearBots)
+        }
         FromGame::KnockbackEvent { landed } => {
             if landed {
                 shared.trainer.kb.on_hit_landed();

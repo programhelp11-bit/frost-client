@@ -19,6 +19,9 @@ public final class FrostHud {
     private static final int DIM = 0xFFA0AFC8;
     private static final int ACCENT = 0xFF8FD3FF;
 
+    private static int lastW;
+    private static int lastH;
+
     private FrostHud() {}
 
     public static void render(GuiGraphics g, DeltaTracker dt) {
@@ -37,8 +40,12 @@ public final class FrostHud {
             g.pose().pushMatrix();
             g.pose().translate(w.pos[0], w.pos[1]);
             g.pose().scale(w.scale, w.scale);
+            lastW = 0;
+            lastH = 0;
             draw(g, font, mc, w, s, q);
+            if (w.kind.equals("keystrokes")) { lastW = 66; lastH = 58; }
             g.pose().popMatrix();
+            st.bounds.put(w.kind, new int[] {Math.round(w.pos[0]), Math.round(w.pos[1]), Math.round(lastW * w.scale), Math.round(lastH * w.scale)});
         }
     }
 
@@ -149,6 +156,8 @@ public final class FrostHud {
 
     /** Flat frost panel: blue tint, 1px blue border and a tiny snowflake in the corner. */
     private static void panel(GuiGraphics g, int x, int y, int w, int h, int tint) {
+        lastW = w;
+        lastH = h;
         g.fill(x, y, x + w, y + h, tint);
         border(g, x, y, w, h, 0x8C6EAAFF);
         if (w >= 26) snowflake(g, x + w - 8, y + 2);

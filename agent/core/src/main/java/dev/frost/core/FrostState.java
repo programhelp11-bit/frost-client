@@ -21,6 +21,9 @@ public final class FrostState {
     public final AtomicBoolean clearBots = new AtomicBoolean(false);
     public final ConcurrentHashMap<Integer, Models.BotCommand> botCommands = new ConcurrentHashMap<>();
 
+    /** Last drawn bounds {x, y, w, h} of every HUD widget, filled by the renderer, used by the menu. */
+    public final Map<String, int[]> bounds = new ConcurrentHashMap<String, int[]>();
+
     public boolean isFrost(String uuidNoDashes) {
         Models.CosmeticEntry e = cosmetics.get(uuidNoDashes);
         return e != null && e.frost;

@@ -563,7 +563,7 @@ mod tests {
 
     #[test]
     fn settings_override_wins() {
-        assert_eq!(effective_client_id(" my-id ").as_deref(), Some("my-id"));
+        assert_eq!(effective_client_id(" 3f2c1a9e-8b4d-4c1e-9a77-0123456789ab ").as_deref(), Some("3f2c1a9e-8b4d-4c1e-9a77-0123456789ab"));
     }
 
     #[test]

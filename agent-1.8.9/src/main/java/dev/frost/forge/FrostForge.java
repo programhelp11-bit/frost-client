@@ -23,6 +23,42 @@ public class FrostForge {
     private static FrostLink link;
     private int ticks;
 
+    private static boolean lastMenuKey;
+
+    /** Bridges the shared menu to the launcher link. */
+    public static final dev.frost.core.Menu.Host HOST = new dev.frost.core.Menu.Host() {
+        public void settingsChanged() {
+            if (link == null) return;
+            JsonObject m = new JsonObject();
+            m.addProperty("type", "ui_settings");
+            m.add("qol", Dispatcher.gson().toJsonTree(FrostState.INSTANCE.qol));
+            m.add("hud", Dispatcher.gson().toJsonTree(FrostState.INSTANCE.hud));
+            link.send(m);
+        }
+
+        public void requestBot(String style, float difficulty) {
+            if (link == null) return;
+            JsonObject m = new JsonObject();
+            m.addProperty("type", "request_bot");
+            m.addProperty("style", style);
+            m.addProperty("difficulty", difficulty);
+            m.addProperty("legacy", true);
+            link.send(m);
+        }
+
+        public void clearBots() {
+            FrostState.INSTANCE.clearBots.set(true);
+            if (link == null) return;
+            JsonObject m = new JsonObject();
+            m.addProperty("type", "request_clear_bots");
+            link.send(m);
+        }
+
+        public boolean launcherConnected() {
+            return link != null && link.connected();
+        }
+    };
+
     public static FrostLink link() {
         return link;
     }
@@ -36,6 +72,7 @@ public class FrostForge {
                 return hello();
             }
         });
+        FrostState.INSTANCE.kbProfile.legacy = true;
         link.start();
         MinecraftForge.EVENT_BUS.register(this);
     }
@@ -59,6 +96,11 @@ public class FrostForge {
         if (e.phase != TickEvent.Phase.END) return;
         Minecraft mc = Minecraft.getMinecraft();
         ticks++;
+        boolean key = org.lwjgl.input.Keyboard.isKeyDown(org.lwjgl.input.Keyboard.KEY_RSHIFT);
+        if (key && !lastMenuKey && mc.currentScreen == null && mc.thePlayer != null) {
+            mc.displayGuiScreen(new FrostScreen());
+        }
+        lastMenuKey = key;
         Stats.tick(mc);
         Qol.tick(mc);
         TabIcons.tick(mc, ticks);

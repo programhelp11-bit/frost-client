@@ -442,6 +442,15 @@ fn main() {
                 loop {
                     tokio::time::sleep(Duration::from_secs(1)).await;
                     let st = handle.state::<AppState>();
+                    if let Some((qol, hud)) = st.ipc.as_ref().and_then(|i| i.take_settings()) {
+                        {
+                            let mut cur = st.settings.lock().unwrap();
+                            cur.qol = qol;
+                            cur.hud = hud;
+                            let _ = cur.save();
+                        }
+                        let _ = handle.emit("settings-changed", ());
+                    }
                     let now = st.ipc.as_ref().map(|i| i.connected()).unwrap_or(false);
                     if now && !was {
                         push_settings(&st);

@@ -634,6 +634,7 @@ async function boot() {
     inv('get_state').then(s => { S.st.instances = s.instances; }).catch(() => {});
   });
   L('launch-progress', e => { S.launch.frac = e.payload.fraction; refreshLaunchBlock(); });
+  L('settings-changed', async () => { const st = await inv('get_state'); S.cfg = st.settings; if (['hud', 'trainer'].includes(S.page)) renderView(); });
   L('launch-warning', e => toast(e.payload, 'err'));
   L('ipc-connected', e => { S.ipc = e.payload; if (['hud', 'trainer'].includes(S.page)) renderView(); });
 }

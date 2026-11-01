@@ -14,6 +14,42 @@ public final class FrostMc {
     private static int ticks;
     private static String mcVersion = "?";
 
+    private static boolean lastMenuKey;
+
+    /** Bridges the shared menu to the launcher link. */
+    public static final dev.frost.core.Menu.Host HOST = new dev.frost.core.Menu.Host() {
+        public void settingsChanged() {
+            if (link == null) return;
+            JsonObject m = new JsonObject();
+            m.addProperty("type", "ui_settings");
+            m.add("qol", Dispatcher.gson().toJsonTree(FrostState.INSTANCE.qol));
+            m.add("hud", Dispatcher.gson().toJsonTree(FrostState.INSTANCE.hud));
+            link.send(m);
+        }
+
+        public void requestBot(String style, float difficulty) {
+            if (link == null) return;
+            JsonObject m = new JsonObject();
+            m.addProperty("type", "request_bot");
+            m.addProperty("style", style);
+            m.addProperty("difficulty", difficulty);
+            m.addProperty("legacy", FrostState.INSTANCE.kbProfile.legacy);
+            link.send(m);
+        }
+
+        public void clearBots() {
+            FrostState.INSTANCE.clearBots.set(true);
+            if (link == null) return;
+            JsonObject m = new JsonObject();
+            m.addProperty("type", "request_clear_bots");
+            link.send(m);
+        }
+
+        public boolean launcherConnected() {
+            return link != null && link.connected();
+        }
+    };
+
     private FrostMc() {}
 
     public static FrostLink link() {
@@ -40,6 +76,7 @@ public final class FrostMc {
 
     private static void tick(Minecraft mc) {
         ticks++;
+        openMenuKey(mc);
         StatsCollector.tick(mc);
         QolApplier.tick(mc);
         TabIcons.tick(mc, ticks);
@@ -51,6 +88,17 @@ public final class FrostMc {
             msg.add("stats", Dispatcher.gson().toJsonTree(StatsCollector.latest));
             link.send(msg);
         }
+    }
+
+    /** Right Shift opens the Frost menu (polled, so no key-mapping API is needed). */
+    private static void openMenuKey(Minecraft mc) {
+        long window = org.lwjgl.glfw.GLFW.glfwGetCurrentContext();
+        boolean down = window != 0L
+            && org.lwjgl.glfw.GLFW.glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+        if (down && !lastMenuKey && mc.mouseHandler.isMouseGrabbed() && mc.player != null) {
+            mc.setScreen(new FrostScreen());
+        }
+        lastMenuKey = down;
     }
 
     static void sendTabPlayers(java.util.Collection<String> uuids) {

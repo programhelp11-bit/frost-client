@@ -102,4 +102,34 @@ class CoreTest {
         assertEquals(0.0, air[1]);
         assertTrue(airLegacy[1] > 0);
     }
+
+    @Test
+    void menuDragMovesWidgetAndReportsChange() {
+        final int[] changed = {0};
+        FrostState st = new FrostState();
+        Menu.Host host = new Menu.Host() {
+            public void settingsChanged() { changed[0]++; }
+            public void requestBot(String style, float d) { }
+            public void clearBots() { }
+            public boolean launcherConnected() { return false; }
+        };
+        Menu menu = new Menu(host, st);
+        Menu.Canvas canvas = new Menu.Canvas() {
+            public void fill(int a, int b, int c, int d, int argb) { }
+            public void text(String t, int x, int y, int argb) { }
+            public int width(String t) { return t.length() * 6; }
+            public int lineHeight() { return 9; }
+        };
+        st.bounds.put("fps", new int[] {200, 100, 50, 20});
+        for (Models.Widget w : st.hud.widgets) if (w.kind.equals("fps")) w.pos = new float[] {200f, 100f};
+        menu.render(canvas, 640, 360, 210, 110, false);
+        menu.render(canvas, 640, 360, 210, 110, true);   // press on the widget
+        menu.render(canvas, 640, 360, 250, 150, true);   // drag
+        menu.render(canvas, 640, 360, 250, 150, false);  // release
+        Models.Widget fps = null;
+        for (Models.Widget w : st.hud.widgets) if (w.kind.equals("fps")) fps = w;
+        assertEquals(240f, fps.pos[0]);
+        assertEquals(140f, fps.pos[1]);
+        assertEquals(1, changed[0]);
+    }
 }

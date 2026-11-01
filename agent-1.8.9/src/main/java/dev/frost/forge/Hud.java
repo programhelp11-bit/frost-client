@@ -19,6 +19,9 @@ public final class Hud {
     private static final int TEXT = 0xFFEAF2FF;
     private static final int DIM = 0xFFA0AFC8;
 
+    private static int lastW;
+    private static int lastH;
+
     private Hud() {}
 
     public static void render(Minecraft mc) {
@@ -33,8 +36,12 @@ public final class Hud {
             GlStateManager.pushMatrix();
             GlStateManager.translate(w.pos[0], w.pos[1], 0f);
             GlStateManager.scale(w.scale, w.scale, 1f);
+            lastW = 0;
+            lastH = 0;
             draw(mc, font, w, s, q);
+            if (w.kind.equals("keystrokes")) { lastW = 66; lastH = 58; }
             GlStateManager.popMatrix();
+            st.bounds.put(w.kind, new int[] {Math.round(w.pos[0]), Math.round(w.pos[1]), Math.round(lastW * w.scale), Math.round(lastH * w.scale)});
         }
         GlStateManager.enableBlend();
         GlStateManager.color(1f, 1f, 1f, 1f);
@@ -131,6 +138,8 @@ public final class Hud {
     }
 
     private static void panel(int x, int y, int w, int h, int tint) {
+        lastW = w;
+        lastH = h;
         Gui.drawRect(x, y, x + w, y + h, tint);
         border(x, y, w, h, 0x8C6EAAFF);
         if (w >= 26) snowflake(x + w - 8, y + 2);
