@@ -284,17 +284,39 @@ const AUTHORIZE_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/
 
 /// The Azure application id baked into the build (`FROST_MS_CLIENT_ID` at compile time), so end
 /// users never configure anything. A non-empty settings value or a runtime env var overrides it.
-pub fn effective_client_id(settings_override: &str) -> Option<String> {
-    let o = settings_override.trim();
-    if !o.is_empty() {
-        return Some(o.to_owned());
-    }
+/// Azure application ids are GUIDs (8-4-4-4-12 hex digits).
+pub fn is_valid_client_id(id: &str) -> bool {
+    let parts: Vec<&str> = id.split('-').collect();
+    parts.len() == 5
+        && [8usize, 4, 4, 4, 12].iter().zip(&parts).all(|(n, p)| p.len() == *n && p.chars().all(|c| c.is_ascii_hexdigit()))
+}
+
+/// Every configured candidate in priority order: settings override, compiled-in id, env var.
+fn client_id_candidates(settings_override: &str) -> Vec<String> {
+    let mut v = vec![settings_override.trim().to_owned()];
     if let Some(id) = option_env!("FROST_MS_CLIENT_ID") {
-        if !id.trim().is_empty() {
-            return Some(id.trim().to_owned());
-        }
+        v.push(id.trim().to_owned());
     }
-    std::env::var("FROST_MS_CLIENT_ID").ok().filter(|s| !s.trim().is_empty()).map(|s| s.trim().to_owned())
+    if let Ok(id) = std::env::var("FROST_MS_CLIENT_ID") {
+        v.push(id.trim().to_owned());
+    }
+    v.retain(|s| !s.is_empty());
+    v
+}
+
+/// The Azure application id baked into the build (`FROST_MS_CLIENT_ID` at compile time), so end
+/// users never configure anything. A non-empty settings value or a runtime env var overrides it.
+/// Only well-formed GUIDs are accepted; anything else behaves as "not configured".
+pub fn effective_client_id(settings_override: &str) -> Option<String> {
+    client_id_candidates(settings_override).into_iter().find(|c| is_valid_client_id(c))
+}
+
+/// A client id is configured but is not a valid GUID (e.g. someone typed an app *name*).
+pub fn invalid_client_id(settings_override: &str) -> Option<String> {
+    if effective_client_id(settings_override).is_some() {
+        return None;
+    }
+    client_id_candidates(settings_override).into_iter().next()
 }
 
 /// RFC 7636 S256 code challenge.
@@ -492,6 +514,14 @@ impl AccountStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn client_id_must_be_a_guid() {
+        assert!(is_valid_client_id("3f2c1a9e-8b4d-4c1e-9a77-0123456789ab"));
+        assert!(!is_valid_client_id("FROST"));
+        assert!(!is_valid_client_id(""));
+        assert!(!is_valid_client_id("3f2c1a9e-8b4d-4c1e-9a77-0123456789a"));
+    }
 
     fn acc(id: &str) -> Account {
         Account {

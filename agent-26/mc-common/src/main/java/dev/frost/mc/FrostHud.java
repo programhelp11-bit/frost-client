@@ -91,8 +91,8 @@ public final class FrostHud {
                 panel(g, 0, 0, width + 12, h, tint);
                 int y = 4;
                 for (String[] r : rows) {
-                    g.drawString(font, r[0], 6, y, DIM);
-                    g.drawString(font, r[1], 6 + font.width(r[0]) + 6, y, TEXT);
+                    g.text(font, r[0], 6, y, DIM, false);
+                    g.text(font, r[1], 6 + font.width(r[0]) + 6, y, TEXT, false);
                     y += font.lineHeight + 2;
                 }
             }
@@ -117,13 +117,13 @@ public final class FrostHud {
             ItemStack st = mc.player.getItemBySlot(slots[i]);
             int y = 3 + i * 18;
             if (st.isEmpty()) {
-                g.drawString(font, "-", 8, y + 4, DIM);
+                g.text(font, "-", 8, y + 4, DIM, false);
                 continue;
             }
-            g.renderItem(st, 4, y);
+            g.item(st, 4, y);
             if (st.isDamageableItem()) {
                 int pct = Math.round(100f * (1f - (float) st.getDamageValue() / Math.max(1, st.getMaxDamage())));
-                g.drawString(font, pct + "%", 24, y + 4, pct > 50 ? TEXT : (pct > 20 ? 0xFFFFC85A : 0xFFFF6464));
+                g.text(font, pct + "%", 24, y + 4, pct > 50 ? TEXT : (pct > 20 ? 0xFFFFC85A : 0xFFFF6464), false);
             }
         }
     }
@@ -144,7 +144,7 @@ public final class FrostHud {
         int fill = down ? 0xB48FD3FF : 0x660E204E;
         g.fill(x, y, x + w, y + h, fill);
         border(g, x, y, w, h, down ? 0xFFBFE6FF : 0x906EAAFF);
-        g.drawString(font, label, x + (w - font.width(label)) / 2, y + (h - font.lineHeight) / 2 + 1, TEXT);
+        g.text(font, label, x + (w - font.width(label)) / 2, y + (h - font.lineHeight) / 2 + 1, TEXT, false);
     }
 
     /** Flat frost panel: blue tint, 1px blue border and a tiny snowflake in the corner. */

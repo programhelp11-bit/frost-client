@@ -19,6 +19,15 @@ use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 
 const NO_CLIENT_ID: &str = "NO_CLIENT_ID";
 
+/// Error string for the UI: `NO_CLIENT_ID`, or `BAD_CLIENT_ID:<value>` when one is set but malformed.
+fn client_id_error(st: &AppState) -> String {
+    let over = st.settings.lock().unwrap().ms_client_id.clone();
+    match auth::invalid_client_id(&over) {
+        Some(bad) => format!("BAD_CLIENT_ID:{bad}"),
+        None => NO_CLIENT_ID.to_owned(),
+    }
+}
+
 struct AppState {
     http: reqwest::Client,
     settings: Mutex<Settings>,
@@ -46,7 +55,7 @@ async fn fresh_account(st: &AppState) -> Result<Account, String> {
     if !acc.is_expired() {
         return Ok(acc);
     }
-    let cid = client_id(st).ok_or(NO_CLIENT_ID)?;
+    let cid = client_id(st).ok_or_else(|| client_id_error(st))?;
     let new = auth::refresh(&st.http, &cid, &acc).await.map_err(err)?;
     let mut store = st.accounts.lock().unwrap();
     store.upsert(new.clone());
@@ -129,6 +138,7 @@ fn get_state(st: State<'_, AppState>) -> Value {
         "settings": settings,
         "account": account,
         "client_id_configured": client_id(&st).is_some(),
+        "client_id_invalid": auth::invalid_client_id(&st.settings.lock().unwrap().ms_client_id),
         "game_running": st.running.load(Ordering::SeqCst),
         "ipc_connected": st.ipc.as_ref().map(|i| i.connected()).unwrap_or(false),
         "instances": instances,
@@ -139,7 +149,7 @@ fn get_state(st: State<'_, AppState>) -> Value {
 
 #[tauri::command]
 async fn login(st: State<'_, AppState>) -> Result<Value, String> {
-    let cid = client_id(&st).ok_or(NO_CLIENT_ID)?;
+    let cid = client_id(&st).ok_or_else(|| client_id_error(&st))?;
     let tokens = auth::browser_login(&st.http, &cid, |url| {
         let _ = open::that(url);
     })

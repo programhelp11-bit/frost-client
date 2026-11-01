@@ -454,7 +454,7 @@ function pageSettings() {
       ${a ? setRow(esc(a.username), 'Signed in', `<button class="btn danger sm" data-act="logout">Sign out</button>`)
         : setRow('Not signed in', 'One click opens the official Microsoft login in your browser.', `<button class="btn sm" data-act="login">Sign in</button>`)}
       <div class="set-sec">ADVANCED</div>
-      ${setRow('Custom Azure client ID', S.st.client_id_configured ? 'This build already has one built in — normally leave this empty.' : 'This build has no sign-in app configured. Paste an Azure application (client) ID to enable login.', `<input class="field" style="width:320px;user-select:text" placeholder="built-in" value="${esc(c.ms_client_id)}" data-bind="cid">`)}`;
+      ${setRow('Custom Azure client ID', S.st.client_id_configured ? 'This build already has one built in — normally leave this empty.' : (S.st.client_id_invalid ? `“${esc(S.st.client_id_invalid)}” is not a valid ID (must be a GUID). Paste the Application (client) ID from Azure.` : 'This build has no sign-in app configured. Paste an Azure application (client) ID to enable login.'), `<input class="field" style="width:320px;user-select:text" placeholder="built-in" value="${esc(c.ms_client_id)}" data-bind="cid">`)}`;
   } else {
     body = `<div class="set-sec">FROST CLIENT</div>
       ${setRow('Version', esc(S.st.os), `<span class="val">v${esc(S.st.app_version)}</span>`)}
@@ -474,8 +474,11 @@ async function doLogin() {
     S.st.account = await inv('login');
     toast(`Signed in as ${S.st.account.username}`, 'ok');
   } catch (e) {
-    if (String(e) === 'NO_CLIENT_ID') {
-      modal({ title: 'Sign-in is not set up in this build', body: 'This Frost build was compiled without a Microsoft application ID. Paste one under <b>Settings → Accounts → Custom Azure client ID</b>, or use an official release build.',
+    if (String(e) === 'NO_CLIENT_ID' || String(e).startsWith('BAD_CLIENT_ID')) {
+      const bad = String(e).startsWith('BAD_CLIENT_ID') ? String(e).slice(14) : '';
+      modal({ title: 'Microsoft sign-in needs an application ID',
+        body: (bad ? `The configured ID <b>“${esc(bad)}”</b> is not valid — an Azure application ID is a GUID like <code>3f2c1a9e-8b4d-4c1e-9a77-0123456789ab</code>, not a name.<br><br>` : 'This build has no Microsoft application ID yet.<br><br>')
+          + '<b>One-time setup (free, 2 minutes):</b><br>1. Open <b>portal.azure.com → App registrations → New registration</b><br>2. Supported account types: <b>Personal Microsoft accounts only</b><br>3. Redirect URI: platform <b>Mobile and desktop applications</b>, value <code>http://localhost</code><br>4. Copy the <b>Application (client) ID</b> and paste it below in Settings → Accounts (or set it as the <code>FROST_MS_CLIENT_ID</code> repo variable before building).<br><br>Your app must also be approved for Minecraft services: <b>aka.ms/AppRegInfo</b>.',
         actions: [{ label: 'Open settings', cls: 'btn', onClick: () => { S.page = 'settings'; S.settingsTab = 'accounts'; renderAll(); } }, { label: 'Close' }] });
     } else toast(e, 'err');
   }
@@ -499,7 +502,7 @@ const ACTIONS = {
   launch: async el => {
     S.launch = { phase: 'preparing', msg: 'Preparing…', frac: 0 }; renderView();
     try { await inv('launch_game', { version: el.dataset.v || S.sel }); }
-    catch (e) { S.launch = { phase: 'error', msg: String(e), frac: 0 }; if (String(e) === 'NO_CLIENT_ID') ACTIONS.login(); renderView(); }
+    catch (e) { S.launch = { phase: 'error', msg: String(e), frac: 0 }; if (String(e) === 'NO_CLIENT_ID' || String(e).startsWith('BAD_CLIENT_ID')) { S.launch = { phase: 'idle', msg: '', frac: 0 }; doLogin(); } renderView(); }
   },
   'goto-settings-mc': () => { S.page = 'settings'; S.settingsTab = 'java'; render(); },
   'goto-browse': () => { S.page = 'browse'; S.mr.mc = S.sel; S.mr.page = null; render(); },
