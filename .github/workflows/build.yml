@@ -14,6 +14,8 @@ env:
   CARGO_TERM_COLOR: always
   # Azure application (client) id, stored as an Actions *secret* so it never appears in the repo or logs.
   FROST_MS_CLIENT_ID: ${{ secrets.FROST_MS_CLIENT_ID }}
+  # URL of the deployed Frost cosmetics server (community capes). Optional secret.
+  FROST_API_URL: ${{ secrets.FROST_API_URL }}
 
 jobs:
   agent-fabric:
@@ -103,6 +105,8 @@ jobs:
           test "$(ls src-tauri/agent/*.jar | wc -l)" -ge 5
       - name: Unit tests
         run: bash ci/run.sh cargo test --release -p frost-client
+      - name: Server tests
+        run: bash ci/run.sh cargo test --release -p frost-server
       - name: Build AppImage
         run: bash ci/run.sh npx --yes @tauri-apps/cli@2 build --bundles appimage
       - uses: actions/upload-artifact@v4

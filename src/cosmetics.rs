@@ -136,6 +136,9 @@ pub struct CosmeticEntry {
     pub frost: bool,
     pub cape_url: Option<String>,
     pub cape_hash: Option<String>,
+    /// Changes whenever the player applied a new skin; clients refresh their copy when it moves.
+    #[serde(default)]
+    pub skin_rev: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -148,6 +151,7 @@ struct Session {
     token: String,
 }
 
+#[derive(Clone)]
 pub struct FrostApi {
     http: reqwest::Client,
     base: String,
@@ -206,32 +210,117 @@ impl FrostApi {
         Ok(())
     }
 
-    /// Upload a Frost-exclusive cape (visible only to other Frost users).
-    pub async fn upload_cape(&self, png: Vec<u8>) -> Result<()> {
+    /// Absolute URL for a path the server returned (`/v1/capes/<id>.png`).
+    pub fn absolute(&self, path: &str) -> String {
+        if path.starts_with("http") {
+            path.to_owned()
+        } else {
+            self.url(path)
+        }
+    }
+
+    /// Community cape gallery (no sign-in needed). Cape URLs in the answer are made absolute.
+    pub async fn list_capes(&self, offset: u32, sort: &str) -> Result<serde_json::Value> {
+        let mut v: serde_json::Value = self
+            .http
+            .get(self.url("/v1/capes"))
+            .query(&[("offset", offset.to_string()), ("limit", "24".to_owned()), ("sort", sort.to_owned())])
+            .send()
+            .await?
+            .error_for_status()
+            .context("cape gallery")?
+            .json()
+            .await?;
+        if let Some(list) = v.get_mut("capes").and_then(|c| c.as_array_mut()) {
+            for cape in list {
+                if let Some(u) = cape.get("url").and_then(|u| u.as_str()).map(|u| self.absolute(u)) {
+                    cape["url"] = serde_json::Value::String(u);
+                }
+            }
+        }
+        Ok(v)
+    }
+
+    /// Publish a cape to the community gallery; returns its id.
+    pub async fn upload_cape(&self, name: &str, png: Vec<u8>) -> Result<String> {
         validate_cape_png(&png)?;
         let part = reqwest::multipart::Part::bytes(png)
             .file_name("cape.png")
             .mime_str("image/png")?;
-        let form = reqwest::multipart::Form::new().part("file", part);
-        self.http
-            .put(self.url("/v1/cape"))
+        let form = reqwest::multipart::Form::new().text("name", name.to_owned()).part("file", part);
+        let resp = self
+            .http
+            .post(self.url("/v1/capes"))
             .bearer_auth(self.bearer()?)
             .multipart(form)
             .send()
+            .await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("cape upload failed ({status}): {body}");
+        }
+        let v: serde_json::Value = resp.json().await?;
+        Ok(v["id"].as_str().unwrap_or_default().to_owned())
+    }
+
+    /// Choose the cape other Frost players see on you: a cape id, `frost` (free default) or `none`.
+    pub async fn select_cape(&self, cape: &str) -> Result<()> {
+        self.http
+            .put(self.url("/v1/me"))
+            .bearer_auth(self.bearer()?)
+            .json(&json!({ "cape": cape }))
+            .send()
             .await?
             .error_for_status()
-            .context("cape upload")?;
+            .context("select cape")?;
         Ok(())
     }
 
-    pub async fn delete_cape(&self) -> Result<()> {
+    /// Tell other Frost players that this player's skin changed.
+    pub async fn bump_skin(&self) -> Result<()> {
         self.http
-            .delete(self.url("/v1/cape"))
+            .put(self.url("/v1/me"))
             .bearer_auth(self.bearer()?)
+            .json(&json!({ "bump_skin": true }))
             .send()
             .await?
             .error_for_status()?;
         Ok(())
+    }
+
+    /// The cape currently selected for this player.
+    pub async fn my_cape(&self) -> Result<String> {
+        let v: serde_json::Value = self
+            .http
+            .get(self.url("/v1/me"))
+            .bearer_auth(self.bearer()?)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        Ok(v["cape"].as_str().unwrap_or("frost").to_owned())
+    }
+
+    pub async fn delete_cape(&self, id: &str) -> Result<()> {
+        self.http
+            .delete(self.url(&format!("/v1/capes/{id}")))
+            .bearer_auth(self.bearer()?)
+            .send()
+            .await?
+            .error_for_status()
+            .context("delete cape")?;
+        Ok(())
+    }
+
+    /// Download a cape / image by absolute URL (small PNGs only).
+    pub async fn download(&self, url: &str) -> Result<Vec<u8>> {
+        let bytes = self.http.get(url).send().await?.error_for_status()?.bytes().await?;
+        if bytes.len() > MAX_IMAGE_BYTES {
+            bail!("image too large");
+        }
+        Ok(bytes.to_vec())
     }
 
     /// Announce "this player is online with Frost" (call every ~60 s while the game runs).
@@ -257,8 +346,42 @@ impl FrostApi {
             .send()
             .await?
             .error_for_status()?;
-        Ok(resp.json().await?)
+        let mut map: HashMap<String, CosmeticEntry> = resp.json().await?;
+        for e in map.values_mut() {
+            if let Some(u) = e.cape_url.take() {
+                e.cape_url = Some(self.absolute(&u));
+            }
+        }
+        Ok(map)
     }
+}
+
+/// The skin PNG currently set on a Minecraft account (from the public session server) + variant.
+pub async fn fetch_current_skin(http: &reqwest::Client, uuid: &str) -> Result<(Vec<u8>, bool)> {
+    let profile: serde_json::Value = http
+        .get(format!("https://sessionserver.mojang.com/session/minecraft/profile/{}", uuid.replace('-', "")))
+        .send()
+        .await?
+        .error_for_status()
+        .context("profile lookup")?
+        .json()
+        .await?;
+    let encoded = profile["properties"]
+        .as_array()
+        .and_then(|p| p.iter().find(|x| x["name"] == "textures"))
+        .and_then(|x| x["value"].as_str())
+        .ok_or_else(|| anyhow!("profile has no textures"))?;
+    use base64::Engine as _;
+    let decoded = base64::engine::general_purpose::STANDARD.decode(encoded).context("textures value")?;
+    let tex: serde_json::Value = serde_json::from_slice(&decoded)?;
+    let skin = &tex["textures"]["SKIN"];
+    let url = skin["url"].as_str().ok_or_else(|| anyhow!("this account has no custom skin"))?;
+    let slim = skin["metadata"]["model"] == "slim";
+    let bytes = http.get(url).send().await?.error_for_status()?.bytes().await?;
+    if bytes.len() > MAX_IMAGE_BYTES {
+        bail!("skin too large");
+    }
+    Ok((bytes.to_vec(), slim))
 }
 
 /// Short-lived cache so the agent does not hit the backend for every nametag render.

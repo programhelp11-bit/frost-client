@@ -55,5 +55,5 @@ strip = true
 opt-level = 1
 
 [workspace]
-members = [".", "src-tauri"]
+members = [".", "src-tauri", "server"]
 resolver = "2"

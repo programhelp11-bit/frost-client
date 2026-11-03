@@ -28,6 +28,28 @@ pub enum ToGame {
     KnockbackTrainer { enabled: bool, profile: KbProfile },
     BotCommand { id: u32, command: Command },
     Bedwars { bridge_trainer: bool },
+    /// What the in-game radial menus show: saved skins (R) and cape choices (X).
+    /// Short message shown on the in-game HUD.
+    Notice { text: String },
+    Library { skins: Vec<LibEntry>, capes: Vec<LibEntry>, active_cape: String },
+}
+
+/// One slot of a radial menu.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LibEntry {
+    pub id: String,
+    pub name: String,
+    /// `RRGGBB` swatch colour.
+    pub color: String,
+}
+
+/// Something the player picked in the in-game menus; handled by the launcher shell.
+#[derive(Debug, Clone, PartialEq)]
+pub enum GameRequest {
+    /// Apply a saved skin (library id).
+    Skin(String),
+    /// Wear a cape: `frost`, `none` or a community cape id.
+    Cape(String),
 }
 
 /// Game -> launcher
@@ -54,6 +76,10 @@ pub enum FromGame {
     },
     /// Trainer menu: remove all bots.
     RequestClearBots,
+    /// Radial menu (R): apply a saved skin.
+    RequestSkin { id: String },
+    /// Radial menu (X): wear a cape (`frost`, `none` or a community id).
+    RequestCape { id: String },
 }
 
 #[derive(Default)]
@@ -64,6 +90,8 @@ pub struct Shared {
     pub trainer: TrainerManager,
     /// Settings edited in-game, waiting to be saved by the launcher shell.
     pub pending_settings: Option<(QolSettings, HudLayout)>,
+    /// Skin / cape picks from the in-game radial menus, waiting for the launcher shell.
+    pub requests: Vec<GameRequest>,
 }
 
 #[derive(Clone)]
@@ -85,9 +113,18 @@ impl IpcHandle {
         self.shared.lock().unwrap().stats.clone()
     }
 
+    /// Skin / cape picks made in the game since the last call.
+    pub fn take_requests(&self) -> Vec<GameRequest> {
+        std::mem::take(&mut self.shared.lock().unwrap().requests)
+    }
+
     /// Settings edited in the in-game menu since the last call.
     pub fn take_settings(&self) -> Option<(QolSettings, HudLayout)> {
         self.shared.lock().unwrap().pending_settings.take()
+    }
+
+    pub fn tab_players(&self) -> Vec<String> {
+        self.shared.lock().unwrap().tab_players.clone()
     }
 
     pub fn connected(&self) -> bool {
@@ -206,6 +243,14 @@ fn handle_message(msg: FromGame, h: &IpcHandle) -> Option<ToGame> {
             let arena = arena.unwrap_or_else(|| "none".to_owned());
             let bot = shared.trainer.spawn_in("Frost Bot", style, difficulty.clamp(0.1, 1.0), legacy, &arena, kit);
             Some(ToGame::SpawnBot { bot })
+        }
+        FromGame::RequestSkin { id } => {
+            shared.requests.push(GameRequest::Skin(id));
+            None
+        }
+        FromGame::RequestCape { id } => {
+            shared.requests.push(GameRequest::Cape(id));
+            None
         }
         FromGame::RequestClearBots => {
             shared.trainer.clear();

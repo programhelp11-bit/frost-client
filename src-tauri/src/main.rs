@@ -9,7 +9,8 @@ use frost_client::auth::{self, Account, AccountStore};
 use frost_client::config::Settings;
 use frost_client::cosmetics::{self, FrostApi, SkinVariant};
 use frost_client::downloader::Progress;
-use frost_client::ipc::{self, IpcHandle, ToGame};
+use frost_client::ipc::{self, GameRequest, IpcHandle, LibEntry, ToGame};
+use frost_client::library;
 use frost_client::modloader;
 use frost_client::modrinth::{self, SearchQuery};
 use frost_client::trainer::{CombatStyle, KbProfile};
@@ -34,6 +35,10 @@ struct AppState {
     accounts: Mutex<AccountStore>,
     ipc: Option<IpcHandle>,
     running: AtomicBool,
+    /// Signed-in Frost server session (re-created when it expires or the account changes).
+    api_cache: Mutex<Option<(FrostApi, String, std::time::Instant)>>,
+    /// Cape the player currently wears (`frost`, `none` or a community id).
+    active_cape: Mutex<String>,
 }
 
 fn err<E: std::fmt::Display>(e: E) -> String {
@@ -299,27 +304,249 @@ fn decode_png(b64: &str) -> Result<Vec<u8>, String> {
 async fn upload_skin(st: State<'_, AppState>, png_b64: String, slim: bool) -> Result<(), String> {
     let acc = fresh_account(&st).await?;
     let variant = if slim { SkinVariant::Slim } else { SkinVariant::Classic };
-    cosmetics::upload_skin(&st.http, &acc, decode_png(&png_b64)?, variant).await.map_err(err)
+    cosmetics::upload_skin(&st.http, &acc, decode_png(&png_b64)?, variant).await.map_err(err)?;
+    // let other Frost players know (best effort: the server may not be configured)
+    if let Ok(api) = api(&st).await {
+        let _ = api.bump_skin().await;
+    }
+    Ok(())
 }
 
-async fn frost_api(st: &AppState) -> Result<FrostApi, String> {
+fn frost_base(st: &AppState) -> Result<String, String> {
+    let base = st.settings.lock().unwrap().frost_api.trim().to_owned();
+    if base.is_empty() {
+        Err("This build has no Frost server configured, so community capes are unavailable.".into())
+    } else {
+        Ok(base)
+    }
+}
+
+/// Signed-in Frost API handle; the session is cached for a few hours.
+async fn api(st: &AppState) -> Result<FrostApi, String> {
+    let base = frost_base(st)?;
     let acc = fresh_account(st).await?;
-    let base = st.settings.lock().unwrap().frost_api.clone();
+    if let Some((api, uuid, at)) = st.api_cache.lock().unwrap().as_ref() {
+        if *uuid == acc.uuid && at.elapsed() < Duration::from_secs(5 * 3600) {
+            return Ok(api.clone());
+        }
+    }
     let mut api = FrostApi::new(st.http.clone(), &base);
     api.login(&acc).await.map_err(err)?;
+    *st.api_cache.lock().unwrap() = Some((api.clone(), acc.uuid.clone(), std::time::Instant::now()));
     Ok(api)
 }
 
-#[tauri::command]
-async fn upload_cape(st: State<'_, AppState>, png_b64: String) -> Result<(), String> {
-    let png = decode_png(&png_b64)?;
-    cosmetics::validate_cape_png(&png).map_err(err)?;
-    frost_api(&st).await?.upload_cape(png).await.map_err(err)
+fn forget_api(st: &AppState) {
+    *st.api_cache.lock().unwrap() = None;
+}
+
+/// Tell the game what the radial menus should show.
+fn push_library(st: &AppState) {
+    let Some(ipc) = &st.ipc else { return };
+    let items = library::list();
+    let entry = |id: &str, name: &str, color: &str| LibEntry { id: id.to_owned(), name: name.to_owned(), color: color.to_owned() };
+    let skins: Vec<LibEntry> = items
+        .iter()
+        .filter(|i| i.kind == "skin")
+        .map(|i| entry(&i.id, &i.name, &i.color))
+        .collect();
+    let mut capes = vec![entry("frost", "Frost", "5AAFFF")];
+    capes.extend(
+        items
+            .iter()
+            .filter(|i| i.kind == "fav")
+            .map(|i| entry(i.ref_id.as_deref().unwrap_or_default(), &i.name, &i.color)),
+    );
+    capes.push(entry("none", "No cape", "6B7A99"));
+    let active_cape = st.active_cape.lock().unwrap().clone();
+    ipc.send(ToGame::Library { skins, capes, active_cape });
+}
+
+fn notice(st: &AppState, text: impl Into<String>) {
+    if let Some(ipc) = &st.ipc {
+        ipc.send(ToGame::Notice { text: text.into() });
+    }
 }
 
 #[tauri::command]
-async fn remove_cape(st: State<'_, AppState>) -> Result<(), String> {
-    frost_api(&st).await?.delete_cape().await.map_err(err)
+fn lib_list() -> Value {
+    serde_json::to_value(library::list()).unwrap_or(Value::Null)
+}
+
+#[tauri::command]
+fn lib_save(st: State<'_, AppState>, kind: String, name: String, png_b64: String, slim: bool) -> Result<Value, String> {
+    let item = library::save(&kind, &name, &decode_png(&png_b64)?, slim).map_err(err)?;
+    push_library(&st);
+    serde_json::to_value(item).map_err(err)
+}
+
+#[tauri::command]
+fn lib_png(id: String) -> Result<String, String> {
+    let bytes = library::load_png(&id).map_err(err)?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
+#[tauri::command]
+fn lib_delete(st: State<'_, AppState>, id: String) -> Result<(), String> {
+    library::remove(&id).map_err(err)?;
+    push_library(&st);
+    Ok(())
+}
+
+/// The skin currently on the signed-in account, to start editing from.
+#[tauri::command]
+async fn skin_current(st: State<'_, AppState>) -> Result<Value, String> {
+    let acc = fresh_account(&st).await?;
+    let (png, slim) = cosmetics::fetch_current_skin(&st.http, &acc.uuid).await.map_err(err)?;
+    Ok(json!({ "png_b64": base64::engine::general_purpose::STANDARD.encode(png), "slim": slim }))
+}
+
+#[tauri::command]
+async fn community_list(st: State<'_, AppState>, offset: u32, sort: String) -> Result<Value, String> {
+    let base = frost_base(&st)?;
+    let api = FrostApi::new(st.http.clone(), &base);
+    let mut v = api.list_capes(offset, &sort).await.map_err(err)?;
+    v["active"] = Value::String(st.active_cape.lock().unwrap().clone());
+    v["favorites"] = json!(library::list()
+        .iter()
+        .filter(|i| i.kind == "fav")
+        .filter_map(|i| i.ref_id.clone())
+        .collect::<Vec<_>>());
+    Ok(v)
+}
+
+#[tauri::command]
+async fn community_upload(st: State<'_, AppState>, name: String, png_b64: String) -> Result<String, String> {
+    let png = decode_png(&png_b64)?;
+    cosmetics::validate_cape_png(&png).map_err(err)?;
+    let api = api(&st).await?;
+    let r = api.upload_cape(name.trim(), png).await;
+    if r.is_err() {
+        forget_api(&st);
+    }
+    r.map_err(err)
+}
+
+#[tauri::command]
+async fn cape_select(st: State<'_, AppState>, id: String) -> Result<(), String> {
+    let api = api(&st).await?;
+    api.select_cape(&id).await.map_err(|e| {
+        forget_api(&st);
+        err(e)
+    })?;
+    *st.active_cape.lock().unwrap() = id;
+    push_library(&st);
+    Ok(())
+}
+
+#[tauri::command]
+async fn cape_favorite(st: State<'_, AppState>, id: String, name: String, url: String, on: bool) -> Result<(), String> {
+    if on {
+        let base = frost_base(&st)?;
+        let png = FrostApi::new(st.http.clone(), &base).download(&url).await.map_err(err)?;
+        library::add_favorite(&id, &name, &png).map_err(err)?;
+    } else if let Some(item) = library::list().into_iter().find(|i| i.kind == "fav" && i.ref_id.as_deref() == Some(id.as_str())) {
+        library::remove(&item.id).map_err(err)?;
+    }
+    push_library(&st);
+    Ok(())
+}
+
+#[tauri::command]
+async fn cape_delete(st: State<'_, AppState>, id: String) -> Result<(), String> {
+    api(&st).await?.delete_cape(&id).await.map_err(err)
+}
+
+async fn apply_skin_item(st: &AppState, id: &str) -> Result<String, String> {
+    let item = library::get(id).ok_or("That skin is no longer in your library")?;
+    let png = library::load_png(id).map_err(err)?;
+    let acc = fresh_account(st).await?;
+    let variant = if item.slim { SkinVariant::Slim } else { SkinVariant::Classic };
+    cosmetics::upload_skin(&st.http, &acc, png, variant).await.map_err(err)?;
+    if let Ok(api) = api(st).await {
+        let _ = api.bump_skin().await;
+    }
+    Ok(item.name)
+}
+
+async fn handle_game_request(handle: &AppHandle, req: GameRequest) {
+    let st = handle.state::<AppState>();
+    let msg = match req {
+        GameRequest::Cape(id) => match api(&st).await {
+            Ok(api) => match api.select_cape(&id).await {
+                Ok(()) => {
+                    *st.active_cape.lock().unwrap() = id.clone();
+                    push_library(&st);
+                    match id.as_str() {
+                        "none" => "Cape removed".to_owned(),
+                        _ => "Cape changed".to_owned(),
+                    }
+                }
+                Err(e) => {
+                    forget_api(&st);
+                    format!("Cape change failed: {e:#}")
+                }
+            },
+            Err(e) => format!("Cape change failed: {e}"),
+        },
+        GameRequest::Skin(id) => match apply_skin_item(&st, &id).await {
+            Ok(name) => format!("Skin applied: {name}"),
+            Err(e) => format!("Skin change failed: {e}"),
+        },
+    };
+    notice(&st, msg.clone());
+    let _ = handle.emit("game-notice", msg);
+}
+
+/// While the game runs: handle radial-menu picks, heartbeat, and keep the game's view of other
+/// Frost players (tab snowflake, capes, skin revisions) fresh.
+fn spawn_cosmetics_sync(handle: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let old = Duration::from_secs(3600);
+        let mut last_hb = std::time::Instant::now() - old;
+        let mut last_lookup = std::time::Instant::now() - old;
+        let mut last_tab: Vec<String> = Vec::new();
+        let mut was_connected = false;
+        loop {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            let st = handle.state::<AppState>();
+            let Some(ipc) = st.ipc.as_ref() else { continue };
+            if !ipc.connected() {
+                was_connected = false;
+                continue;
+            }
+            for req in ipc.take_requests() {
+                handle_game_request(&handle, req).await;
+                last_lookup = std::time::Instant::now() - old;
+            }
+            if !was_connected {
+                was_connected = true;
+                push_library(&st);
+                last_hb = std::time::Instant::now() - old;
+                last_lookup = std::time::Instant::now() - old;
+            }
+            let Ok(api) = api(&st).await else { continue };
+            if last_hb.elapsed() > Duration::from_secs(60) {
+                if api.heartbeat().await.is_err() {
+                    forget_api(&st);
+                }
+                last_hb = std::time::Instant::now();
+            }
+            let mut tab = ipc.tab_players();
+            if let Some(me) = st.accounts.lock().unwrap().active().map(|a| a.uuid.replace('-', "")) {
+                if !tab.contains(&me) {
+                    tab.push(me);
+                }
+            }
+            if tab != last_tab || last_lookup.elapsed() > Duration::from_secs(20) {
+                if let Ok(players) = api.lookup(&tab).await {
+                    ipc.send(ToGame::Cosmetics { players });
+                }
+                last_tab = tab;
+                last_lookup = std::time::Instant::now();
+            }
+        }
+    });
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -458,7 +685,10 @@ fn main() {
                 accounts: Mutex::new(AccountStore::load()),
                 ipc,
                 running: AtomicBool::new(false),
+                api_cache: Mutex::new(None),
+                active_cape: Mutex::new("frost".to_owned()),
             });
+            spawn_cosmetics_sync(app.handle().clone());
 
             // Push HUD/QoL settings whenever the game connects and tell the UI about it.
             let handle = app.handle().clone();
@@ -499,8 +729,16 @@ fn main() {
             save_settings,
             launch_game,
             upload_skin,
-            upload_cape,
-            remove_cape,
+            lib_list,
+            lib_save,
+            lib_png,
+            lib_delete,
+            skin_current,
+            community_list,
+            community_upload,
+            cape_select,
+            cape_favorite,
+            cape_delete,
             ipc_status,
             spawn_bot,
             clear_bots,

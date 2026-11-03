@@ -13,6 +13,14 @@ pub fn data_dir() -> PathBuf {
         .join("FrostClient")
 }
 
+/// Seconds since the Unix epoch.
+pub fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
 pub fn settings_path() -> PathBuf {
     data_dir().join("settings.json")
 }
@@ -60,7 +68,7 @@ impl Default for Settings {
             ram_mb: 3072,
             jvm_args: OPTIMIZED_JVM_ARGS.split_whitespace().collect::<Vec<_>>().join(" "),
             java_path: String::new(),
-            frost_api: "https://api.frostclient.example".into(),
+            frost_api: option_env!("FROST_API_URL").unwrap_or("").trim().into(),
             ms_client_id: String::new(),
             ipc_port: 25585,
             hud: HudLayout::default(),
@@ -78,6 +86,9 @@ impl Settings {
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default();
+        if s.frost_api.trim().is_empty() || s.frost_api.contains("frostclient.example") {
+            s.frost_api = Settings::default().frost_api;
+        }
         if s.jvm_args.trim() == OLD_DEFAULT_JVM_ARGS {
             s.jvm_args = Settings::default().jvm_args;
         }
