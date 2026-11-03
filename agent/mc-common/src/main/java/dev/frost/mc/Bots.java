@@ -68,7 +68,7 @@ public final class Bots {
         while ((cfg = st.spawnQueue.poll()) != null) {
             // Bots are a training feature: never spawn them on multiplayer servers.
             if (mc.getSingleplayerServer() == null) {
-                mc.gui.getChat().addMessage(Component.literal("§bFrost§r: bots only work in singleplayer"));
+                mc.gui.setOverlayMessage(Component.literal("§bFrost§r: bots only work in singleplayer"), false);
                 continue;
             }
             Arena.setup(mc, cfg);
