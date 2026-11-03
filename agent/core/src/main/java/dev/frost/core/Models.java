@@ -68,7 +68,21 @@ public final class Models {
         }
     }
 
+    public static final class LibEntry {
+        public String id = "";
+        public String name = "";
+        public String color = "5A8CFF";
+    }
+
+    /** What the radial menus show; pushed by the launcher. */
+    public static final class Library {
+        public List<LibEntry> skins = new ArrayList<>();
+        public List<LibEntry> capes = new ArrayList<>();
+        public String active_cape = "frost";
+    }
+
     public static final class CosmeticEntry {
+        public long skin_rev;
         public boolean frost;
         public String cape_url;
         public String cape_hash;

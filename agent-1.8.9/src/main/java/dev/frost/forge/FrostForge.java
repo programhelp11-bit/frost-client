@@ -24,6 +24,8 @@ public class FrostForge {
     private int ticks;
 
     private static boolean lastMenuKey;
+    private static boolean lastSkinsKey;
+    private static boolean lastCapesKey;
 
     /** Bridges the shared menu to the launcher link. */
     public static final dev.frost.core.Menu.Host HOST = new dev.frost.core.Menu.Host() {
@@ -99,10 +101,16 @@ public class FrostForge {
         Minecraft mc = Minecraft.getMinecraft();
         ticks++;
         boolean key = org.lwjgl.input.Keyboard.isKeyDown(org.lwjgl.input.Keyboard.KEY_RSHIFT);
-        if (key && !lastMenuKey && mc.currentScreen == null && mc.thePlayer != null) {
-            mc.displayGuiScreen(new FrostScreen());
+        boolean skins = org.lwjgl.input.Keyboard.isKeyDown(org.lwjgl.input.Keyboard.KEY_R);
+        boolean capes = org.lwjgl.input.Keyboard.isKeyDown(org.lwjgl.input.Keyboard.KEY_X);
+        if (mc.currentScreen == null && mc.thePlayer != null) {
+            if (key && !lastMenuKey) mc.displayGuiScreen(new FrostScreen());
+            else if (skins && !lastSkinsKey) mc.displayGuiScreen(new FrostScreen("skins"));
+            else if (capes && !lastCapesKey) mc.displayGuiScreen(new FrostScreen("capes"));
         }
         lastMenuKey = key;
+        lastSkinsKey = skins;
+        lastCapesKey = capes;
         Stats.tick(mc);
         Qol.tick(mc);
         TabIcons.tick(mc, ticks);
@@ -139,5 +147,32 @@ public class FrostForge {
         msg.addProperty("type", "knockback_event");
         msg.addProperty("landed", landed);
         link.send(msg);
+    }
+
+    /** Radial menu pick: apply a saved skin (the launcher uploads it to the account). */
+    static void requestSkin(String id) {
+        if (link == null || !link.connected()) {
+            FrostState.INSTANCE.notify("Frost: start the game from the Frost launcher");
+            return;
+        }
+        JsonObject m = new JsonObject();
+        m.addProperty("type", "request_skin");
+        m.addProperty("id", id);
+        link.send(m);
+        FrostState.INSTANCE.notify("Frost: applying skin...");
+    }
+
+    /** Radial menu pick: wear a cape (frost, none or a community id). */
+    static void requestCape(String id) {
+        if (link == null || !link.connected()) {
+            FrostState.INSTANCE.notify("Frost: start the game from the Frost launcher");
+            return;
+        }
+        JsonObject m = new JsonObject();
+        m.addProperty("type", "request_cape");
+        m.addProperty("id", id);
+        link.send(m);
+        FrostState.INSTANCE.library.active_cape = id;
+        FrostState.INSTANCE.notify("Frost: changing cape...");
     }
 }

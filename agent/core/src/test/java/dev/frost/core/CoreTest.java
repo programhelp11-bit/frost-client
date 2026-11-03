@@ -149,4 +149,25 @@ class CoreTest {
         }
         assertEquals(0, ArenaPlan.build("none").size());
     }
+
+    @Test
+    void radialHitTestingAndLibraryMessage() {
+        // 4 slots, clockwise from the top: top, right, bottom, left
+        assertEquals(0, Radial.indexAt(4, 5, -40, 20, 100));   // up (slightly right of the axis)
+        assertEquals(1, Radial.indexAt(4, 50, 5, 20, 100));    // right
+        assertEquals(2, Radial.indexAt(4, -5, 50, 20, 100));   // down
+        assertEquals(3, Radial.indexAt(4, -50, -5, 20, 100));  // left
+        assertEquals(-1, Radial.indexAt(4, 0, 0, 20, 100));    // hole
+        assertEquals(-1, Radial.indexAt(4, 200, 0, 20, 100));  // outside
+        assertEquals(0xFF112233, Radial.parseColor("112233"));
+
+        FrostState st = new FrostState();
+        Dispatcher.handle(st, JsonParser.parseString(
+            "{\"type\":\"library\",\"skins\":[{\"id\":\"s1\",\"name\":\"Red\",\"color\":\"FF0000\"}],"
+            + "\"capes\":[{\"id\":\"frost\",\"name\":\"Frost\",\"color\":\"5AAFFF\"}],\"active_cape\":\"frost\"}").getAsJsonObject());
+        assertEquals(1, st.library.skins.size());
+        assertEquals("s1", st.library.skins.get(0).id);
+        Dispatcher.handle(st, JsonParser.parseString("{\"type\":\"notice\",\"text\":\"hi\"}").getAsJsonObject());
+        assertEquals("hi", st.notice);
+    }
 }

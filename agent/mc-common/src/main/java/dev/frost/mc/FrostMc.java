@@ -15,6 +15,8 @@ public final class FrostMc {
     private static String mcVersion = "?";
 
     private static boolean lastMenuKey;
+    private static boolean lastSkinsKey;
+    private static boolean lastCapesKey;
 
     /** Bridges the shared menu to the launcher link. */
     public static final dev.frost.core.Menu.Host HOST = new dev.frost.core.Menu.Host() {
@@ -92,15 +94,50 @@ public final class FrostMc {
         }
     }
 
-    /** Right Shift opens the Frost menu (polled, so no key-mapping API is needed). */
+    /** Right Shift = menu, R = skin wheel, X = cape wheel (polled, so no key-mapping API is needed). */
     private static void openMenuKey(Minecraft mc) {
         long window = org.lwjgl.glfw.GLFW.glfwGetCurrentContext();
-        boolean down = window != 0L
+        boolean menu = window != 0L
             && org.lwjgl.glfw.GLFW.glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_SHIFT) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
-        if (down && !lastMenuKey && mc.screen == null && mc.player != null) {
-            mc.setScreen(new FrostScreen());
+        boolean skins = window != 0L
+            && org.lwjgl.glfw.GLFW.glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_R) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+        boolean capes = window != 0L
+            && org.lwjgl.glfw.GLFW.glfwGetKey(window, org.lwjgl.glfw.GLFW.GLFW_KEY_X) == org.lwjgl.glfw.GLFW.GLFW_PRESS;
+        if (mc.screen == null && mc.player != null) {
+            if (menu && !lastMenuKey) mc.setScreen(new FrostScreen());
+            else if (skins && !lastSkinsKey) mc.setScreen(new FrostScreen("skins"));
+            else if (capes && !lastCapesKey) mc.setScreen(new FrostScreen("capes"));
         }
-        lastMenuKey = down;
+        lastMenuKey = menu;
+        lastSkinsKey = skins;
+        lastCapesKey = capes;
+    }
+
+    /** Radial menu pick: apply a saved skin (launcher uploads it to the account). */
+    static void requestSkin(String id) {
+        if (link == null || !link.connected()) {
+            FrostState.INSTANCE.notify("Frost: start the game from the Frost launcher");
+            return;
+        }
+        JsonObject m = new JsonObject();
+        m.addProperty("type", "request_skin");
+        m.addProperty("id", id);
+        link.send(m);
+        FrostState.INSTANCE.notify("Frost: applying skin...");
+    }
+
+    /** Radial menu pick: wear a cape (frost, none or a community id). */
+    static void requestCape(String id) {
+        if (link == null || !link.connected()) {
+            FrostState.INSTANCE.notify("Frost: start the game from the Frost launcher");
+            return;
+        }
+        JsonObject m = new JsonObject();
+        m.addProperty("type", "request_cape");
+        m.addProperty("id", id);
+        link.send(m);
+        FrostState.INSTANCE.library.active_cape = id;
+        FrostState.INSTANCE.notify("Frost: changing cape...");
     }
 
     static void sendTabPlayers(java.util.Collection<String> uuids) {

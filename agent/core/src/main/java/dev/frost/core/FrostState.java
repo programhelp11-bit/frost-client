@@ -13,6 +13,7 @@ public final class FrostState {
     public volatile Models.Qol qol = new Models.Qol();
     public volatile Models.HudLayout hud = Models.HudLayout.defaults();
     public volatile Map<String, Models.CosmeticEntry> cosmetics = java.util.Collections.emptyMap();
+    public volatile Models.Library library = new Models.Library();
     public volatile boolean knockbackTrainer;
     public volatile boolean bedwarsBridgeTrainer;
     public volatile Models.KbProfile kbProfile = new Models.KbProfile();

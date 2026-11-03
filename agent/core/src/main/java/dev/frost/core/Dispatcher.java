@@ -25,6 +25,11 @@ public final class Dispatcher {
         } else if (type.equals("cosmetics")) {
             Map<String, Models.CosmeticEntry> players = GSON.fromJson(msg.get("players"), PLAYERS);
             state.cosmetics = players == null ? Collections.<String, Models.CosmeticEntry>emptyMap() : players;
+        } else if (type.equals("library")) {
+            Models.Library lib = GSON.fromJson(msg, Models.Library.class);
+            if (lib != null) state.library = lib;
+        } else if (type.equals("notice")) {
+            if (msg.has("text")) state.notify(msg.get("text").getAsString());
         } else if (type.equals("spawn_bot")) {
             state.spawnQueue.add(GSON.fromJson(msg.get("bot"), Models.BotConfig.class));
         } else if (type.equals("clear_bots")) {
