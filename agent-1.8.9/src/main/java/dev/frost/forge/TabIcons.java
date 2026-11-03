@@ -13,7 +13,7 @@ import java.util.List;
 
 /** Snowflake in front of Frost users' names in the tab list (display-name setter, no coremod). */
 public final class TabIcons {
-    private static final String FLAKE = "❄";
+    private static final String FLAKE = "[\u2744]";
 
     private TabIcons() {}
 
@@ -30,11 +30,11 @@ public final class TabIcons {
 
             boolean frost = uuid.equals(self) || FrostState.INSTANCE.isFrost(uuid);
             IChatComponent current = info.getDisplayName();
-            boolean hasFlake = current != null && current.getUnformattedText().startsWith(FLAKE);
+            boolean hasFlake = current != null && EnumChatFormatting.getTextWithoutFormattingCodes(current.getUnformattedText()).startsWith(FLAKE);
 
             if (frost && !hasFlake) {
                 String shown = ScorePlayerTeam.formatPlayerName(mc.theWorld.getScoreboard().getPlayersTeam(name), name);
-                info.setDisplayName(new ChatComponentText(EnumChatFormatting.AQUA + FLAKE + " " + EnumChatFormatting.RESET + shown));
+                info.setDisplayName(new ChatComponentText(EnumChatFormatting.DARK_AQUA + "[" + EnumChatFormatting.AQUA + "\u2744" + EnumChatFormatting.DARK_AQUA + "] " + EnumChatFormatting.RESET + shown));
             } else if (!frost && hasFlake) {
                 info.setDisplayName(null);
             }

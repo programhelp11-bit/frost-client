@@ -45,6 +45,8 @@ public final class Qol {
             lastBob = !q.minimal_viewmodel;
         }
 
+        performance(mc, q);
+
         boolean boost = q.fps_boost || q.chunk_optimizer;
         if (boost && !boostApplied) {
             if (q.chunk_optimizer) {
@@ -61,6 +63,34 @@ public final class Qol {
             if (savedRenderDistance > 0) mc.gameSettings.renderDistanceChunks = savedRenderDistance;
             mc.gameSettings.particleSetting = savedParticles;
             boostApplied = false;
+        }
+    }
+
+    private static Boolean savedFancy;
+    private static Boolean savedShadows;
+    private static Integer savedAo;
+
+    /** Cheap options: fast graphics, flat lighting, no entity shadow blobs; restored when turned off. */
+    private static void performance(Minecraft mc, Models.Qol q) {
+        if (q.fast_graphics) {
+            if (savedFancy == null) {
+                savedFancy = mc.gameSettings.fancyGraphics;
+                savedAo = mc.gameSettings.ambientOcclusion;
+            }
+            mc.gameSettings.fancyGraphics = false;
+            mc.gameSettings.ambientOcclusion = 0;
+        } else if (savedFancy != null) {
+            mc.gameSettings.fancyGraphics = savedFancy;
+            mc.gameSettings.ambientOcclusion = savedAo;
+            savedFancy = null;
+            savedAo = null;
+        }
+        if (q.no_entity_shadows) {
+            if (savedShadows == null) savedShadows = mc.gameSettings.entityShadows;
+            mc.gameSettings.entityShadows = false;
+        } else if (savedShadows != null) {
+            mc.gameSettings.entityShadows = savedShadows;
+            savedShadows = null;
         }
     }
 

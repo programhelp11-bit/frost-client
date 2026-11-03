@@ -109,7 +109,7 @@ class CoreTest {
         FrostState st = new FrostState();
         Menu.Host host = new Menu.Host() {
             public void settingsChanged() { changed[0]++; }
-            public void requestBot(String style, float d) { }
+            public void requestBot(String style, float d, String arena, boolean kit) { }
             public void clearBots() { }
             public boolean launcherConnected() { return false; }
         };
@@ -131,5 +131,22 @@ class CoreTest {
         assertEquals(240f, fps.pos[0]);
         assertEquals(140f, fps.pos[1]);
         assertEquals(1, changed[0]);
+    }
+
+    @Test
+    void arenaPlansHaveFloorsAndClearAir() {
+        for (String kind : new String[] {"flat", "crystal", "island"}) {
+            java.util.List<ArenaPlan.Cell> cells = ArenaPlan.build(kind);
+            assertTrue(cells.size() > 1000, kind);
+            int[] player = ArenaPlan.playerSpot(kind);
+            boolean floorUnderPlayer = false;
+            for (ArenaPlan.Cell c : cells) {
+                if (c.dx == player[0] && c.dz == player[2] && c.dy == 0 && c.mat != ArenaPlan.Mat.AIR) floorUnderPlayer = true;
+                // the spot the player stands on must be open air
+                if (c.dx == player[0] && c.dz == player[2] && c.dy == player[1]) assertEquals(ArenaPlan.Mat.AIR, c.mat);
+            }
+            assertTrue(floorUnderPlayer, kind);
+        }
+        assertEquals(0, ArenaPlan.build("none").size());
     }
 }

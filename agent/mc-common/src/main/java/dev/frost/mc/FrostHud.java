@@ -13,7 +13,7 @@ import net.minecraft.world.item.ItemStack;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Liquid-glass HUD renderer driven by the layout the launcher pushes (hud_manager.rs). */
+/** Frost-style HUD renderer driven by the layout the launcher pushes (hud_manager.rs). */
 public final class FrostHud {
     private static final int TEXT = 0xFFEAF2FF;
     private static final int DIM = 0xFFA0AFC8;
@@ -93,14 +93,14 @@ public final class FrostHud {
                 }
                 if (rows.isEmpty()) return;
                 int width = 0;
-                for (String[] r : rows) width = Math.max(width, font.width(r[0]) + 6 + font.width(r[1]));
-                int h = rows.size() * (font.lineHeight + 2) + 6;
-                panel(g, 0, 0, width + 12, h, tint);
-                int y = 4;
+                for (String[] r : rows) width = Math.max(width, font.width(r[0]) + 8 + font.width(r[1]));
+                int h = rows.size() * (font.lineHeight + 3) + 5;
+                panel(g, 0, 0, width + 22, h, tint);
+                int y = 5;
                 for (String[] r : rows) {
-                    g.drawString(font, r[0], 6, y, DIM);
-                    g.drawString(font, r[1], 6 + font.width(r[0]) + 6, y, TEXT);
-                    y += font.lineHeight + 2;
+                    g.drawString(font, r[0], 9, y, DIM);
+                    g.drawString(font, r[1], 9 + font.width(r[0]) + 8, y, TEXT);
+                    y += font.lineHeight + 3;
                 }
             }
         }
@@ -119,18 +119,18 @@ public final class FrostHud {
 
     private static void armor(GuiGraphics g, Font font, Minecraft mc, int tint) {
         EquipmentSlot[] slots = {EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET};
-        panel(g, 0, 0, 62, 4 * 18 + 6, tint);
+        panel(g, 0, 0, 68, 4 * 18 + 6, tint);
         for (int i = 0; i < slots.length; i++) {
             ItemStack st = mc.player.getItemBySlot(slots[i]);
             int y = 3 + i * 18;
             if (st.isEmpty()) {
-                g.drawString(font, "-", 8, y + 4, DIM);
+                g.drawString(font, "-", 13, y + 4, DIM);
                 continue;
             }
-            g.renderItem(st, 4, y);
+            g.renderItem(st, 8, y);
             if (st.isDamageableItem()) {
                 int pct = Math.round(100f * (1f - (float) st.getDamageValue() / Math.max(1, st.getMaxDamage())));
-                g.drawString(font, pct + "%", 24, y + 4, pct > 50 ? TEXT : (pct > 20 ? 0xFFFFC85A : 0xFFFF6464));
+                g.drawString(font, pct + "%", 28, y + 4, pct > 50 ? TEXT : (pct > 20 ? 0xFFFFC85A : 0xFFFF6464));
             }
         }
     }
@@ -148,19 +148,24 @@ public final class FrostHud {
     }
 
     private static void key(GuiGraphics g, Font font, int x, int y, int w, int h, String label, boolean down) {
-        int fill = down ? 0xB48FD3FF : 0x660E204E;
-        g.fill(x, y, x + w, y + h, fill);
-        border(g, x, y, w, h, down ? 0xFFBFE6FF : 0x906EAAFF);
-        g.drawString(font, label, x + (w - font.width(label)) / 2, y + (h - font.lineHeight) / 2 + 1, TEXT);
+        roundedFill(g, x, y + 1, w, h, 2, 0x50000000);
+        roundedFill(g, x, y, w, h, 2, down ? 0xE08FD3FF : 0xA0122A5C);
+        if (!down) g.fill(x + 2, y, x + w - 2, y + 1, 0x40BFE6FF);
+        int labelColor = down ? 0xFF0B1B3A : TEXT;
+        g.drawString(font, label, x + (w - font.width(label)) / 2, y + (h - font.lineHeight) / 2 + 1, labelColor);
     }
 
-    /** Flat frost panel: blue tint, 1px blue border and a tiny snowflake in the corner. */
+    /** Frost panel: soft shadow, rounded body, glossy top edge, accent bar and a tiny snowflake. */
     private static void panel(GuiGraphics g, int x, int y, int w, int h, int tint) {
         lastW = w;
         lastH = h;
-        g.fill(x, y, x + w, y + h, tint);
-        border(g, x, y, w, h, 0x8C6EAAFF);
-        if (w >= 26) snowflake(g, x + w - 8, y + 2);
+        roundedFill(g, x, y + 1, w, h, 3, 0x48000000);              // drop shadow
+        roundedFill(g, x, y, w, h, 3, tint);                         // body
+        g.fill(x + 2, y + 1, x + w - 2, y + 3, 0x16FFFFFF);          // gloss on the top edge
+        g.fill(x + 3, y, x + w - 3, y + 1, 0x70BFE6FF);              // bright top line
+        g.fill(x + 3, y + h - 1, x + w - 3, y + h, 0x40000000);      // darker bottom line
+        g.fill(x + 3, y + 4, x + 5, y + h - 4, ACCENT);              // accent bar
+        if (w >= 34) snowflake(g, x + w - 9, y + 3);
     }
 
     /** 5x5 pixel snowflake, drawn with fills so it does not depend on font glyphs. */

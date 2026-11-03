@@ -112,6 +112,19 @@ pub struct QolSettings {
     pub fps_boost: bool,
     pub chunk_optimizer: bool,
     pub chunk_render_cap: u32,
+    /// Turn clouds off (cheap frames in big views).
+    pub no_clouds: bool,
+    /// Disable entity shadow blobs.
+    pub no_entity_shadows: bool,
+    /// Biome colour blending radius 1 instead of up to 7x7 (cheaper chunk meshing).
+    pub low_biome_blend: bool,
+    /// Cap the simulation distance (entity / block-tick range).
+    pub cap_sim_distance: bool,
+    pub sim_distance_cap: u32,
+    /// Remove the blurred menu background.
+    pub no_menu_blur: bool,
+    /// Fast graphics / flat lighting (1.8.9 only; modern versions use Sodium via the performance pack).
+    pub fast_graphics: bool,
 }
 
 impl Default for QolSettings {
@@ -130,6 +143,13 @@ impl Default for QolSettings {
             fps_boost: true,
             chunk_optimizer: true,
             chunk_render_cap: 12,
+            no_clouds: false,
+            no_entity_shadows: true,
+            low_biome_blend: true,
+            cap_sim_distance: true,
+            sim_distance_cap: 8,
+            no_menu_blur: true,
+            fast_graphics: true,
         }
     }
 }

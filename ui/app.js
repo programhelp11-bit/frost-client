@@ -42,6 +42,12 @@ const QOL = [
   ['hitboxes', 'Hitboxes', 'Draw entity hitboxes.'],
   ['fps_boost', 'FPS boost', 'Trim expensive effects for more frames.'],
   ['chunk_optimizer', 'Chunk optimizer', 'Cap chunk work per frame.'],
+  ['no_entity_shadows', 'No entity shadows', 'Skip the dark blobs under entities.'],
+  ['low_biome_blend', 'Low biome blend', 'Cheaper chunk meshing (blend radius 1).'],
+  ['cap_sim_distance', 'Cap simulation distance', 'Limit entity / block-tick range to 8 chunks.'],
+  ['no_menu_blur', 'No menu blur', 'Remove the blurred menu background.'],
+  ['no_clouds', 'No clouds', 'Turn clouds off.'],
+  ['fast_graphics', 'Fast graphics (1.8.9)', 'Fast graphics and flat lighting on 1.8.9.'],
 ];
 const MR_CATS = {
   mod: ['adventure', 'cursed', 'decoration', 'economy', 'equipment', 'food', 'game-mechanics', 'library', 'magic', 'management', 'minigame', 'mobs', 'optimization', 'social', 'storage', 'technology', 'transportation', 'utility', 'worldgen'],
@@ -54,7 +60,7 @@ const S = {
   page: 'home', st: null, cfg: null, sel: '1.21.11',
   launch: { phase: 'idle', msg: '', frac: 0 }, loggingIn: false,
   settingsTab: 'launcher', hudSel: 'cps', ipc: false,
-  bot: { style: 'sword', difficulty: 0.8, kb: false, bridge: false },
+  bot: { style: 'sword', difficulty: 0.8, arena: 'flat', kit: true, kb: false, bridge: false },
   skin: { b64: null, url: null, slim: false }, cape: { b64: null, url: null },
   mr: { mc: null, kind: 'mod', category: '', query: '', sort: 'relevance', offset: 0, limit: 24, page: null, loading: false, error: '', installed: [], busy: new Set(), tab: 'discover', token: 0 },
 };
@@ -206,6 +212,7 @@ function pageVersions() {
         <p>${esc(m.note || '')} Mods you install from Browse land in this version's own folder.</p>
         <div class="acts">
           ${S.st.account ? `<button class="btn" data-act="launch" data-v="${S.sel}">Launch</button>` : `<button class="btn" data-act="login">Sign in</button>`}
+          ${S.sel === '1.8.9' ? '' : `<button class="btn ghost" data-act="perf-pack" title="Sodium, Lithium, FerriteCore, Entity Culling, ImmediatelyFast, ModernFix">Performance pack</button>`}
           <button class="ico" data-act="goto-browse" title="Browse mods">${ICON.search}</button>
           <button class="ico" data-act="open-inst" title="Open folder">${ICON.folder}</button>
         </div>
@@ -412,10 +419,12 @@ function pageTrainer() {
   return `<h1 class="page-title">Trainer</h1><div class="page-sub">Practice against bots in a singleplayer world.</div>
   <div class="line" style="margin-bottom:18px"><span class="pill ${S.ipc ? 'ok' : ''}"><i></i>${S.ipc ? 'Game connected' : 'Launch the game and open a singleplayer world first'}</span></div>
   <div class="trainer">
-    <section class="card glass"><h3>Combat bots</h3><p>Spawns a sparring partner next to you. Difficulty controls aim, reaction time and combos.</p>
+    <section class="card glass"><h3>Combat bots</h3><p>Singleplayer only. Spawns a sparring partner; difficulty controls aim, reaction time, crits, spacing and combos. An arena rebuilds the area around you, so use a flat or throwaway world.</p>
       <div class="stack">
         <select class="field" data-bind="bot-style">${styles.map(([v, l]) => `<option value="${v}" ${B.style === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
         <div class="line"><span style="color:var(--ink-2)">Difficulty</span><input type="range" min="0.1" max="1" step="0.05" value="${B.difficulty}" data-bind="bot-diff"><span class="val" id="v-diff">${Math.round(B.difficulty * 100)}%</span></div>
+        <select class="field" data-bind="bot-arena">${[['none', 'No arena'], ['flat', 'Flat arena'], ['crystal', 'Crystal arena'], ['island', 'Island (knock-off)']].map(([v, l]) => `<option value="${v}" ${B.arena === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <div class="set-row" style="padding:0"><div class="t"><b>Give me a kit</b></div><div class="toggle ${B.kit ? 'on' : ''}" data-act="kit-toggle"></div></div>
         <div class="line"><button class="btn" data-act="bot-spawn">Spawn bot</button><button class="btn ghost" data-act="bot-clear">Remove bots</button></div>
       </div></section>
     <section class="card glass"><h3>Knockback trainer</h3><p>Shows when your hits would land and how knockback chains, using the real formula of your version.</p>
@@ -510,6 +519,15 @@ const ACTIONS = {
   },
   'goto-settings-mc': () => { S.page = 'settings'; S.settingsTab = 'java'; render(); },
   'goto-browse': () => { S.page = 'browse'; S.mr.mc = S.sel; S.mr.page = null; render(); },
+  'perf-pack': async () => {
+    toast('Installing performance mods…', 'ok');
+    try {
+      const r = await inv('install_perf_pack', { mc: S.sel });
+      const ok = r.filter(x => x.ok).map(x => x.mod), bad = r.filter(x => !x.ok).map(x => x.mod);
+      toast(`Installed: ${ok.join(', ') || 'none'}${bad.length ? ` · no build for ${S.sel}: ${bad.join(', ')}` : ''}`, bad.length && !ok.length ? 'err' : 'ok');
+      inv('get_state').then(s => { S.st.instances = s.instances; renderView(); }).catch(() => {});
+    } catch (e) { toast(e, 'err'); }
+  },
   'open-inst': () => inv('open_instance_folder', { mc: S.sel }).catch(e => toast(e, 'err')),
   'open-data': () => inv('open_data_folder').catch(e => toast(e, 'err')),
   /* browse */
@@ -544,7 +562,8 @@ const ACTIONS = {
   'hud-toggle': (el, e) => { e.stopPropagation(); const w = widget(el.dataset.k); w.enabled = !w.enabled; saveCfg(); renderView(); },
   qol: el => { const k = el.dataset.k; S.cfg.qol[k] = !S.cfg.qol[k]; saveCfg(); renderView(); },
   /* trainer */
-  'bot-spawn': () => bridge('spawn_bot', { style: S.bot.style, difficulty: S.bot.difficulty }, 'Bot spawned'),
+  'bot-spawn': () => bridge('spawn_bot', { style: S.bot.style, difficulty: S.bot.difficulty, arena: S.bot.arena, kit: S.bot.kit }, 'Bot requested (singleplayer only)'),
+  'kit-toggle': () => { S.bot.kit = !S.bot.kit; renderView(); },
   'bot-clear': () => bridge('clear_bots', {}, 'Bots removed'),
   'kb-toggle': () => { S.bot.kb = !S.bot.kb; bridge('kb_trainer', { enabled: S.bot.kb }, S.bot.kb ? 'Knockback trainer on' : 'Knockback trainer off'); renderView(); },
   'bridge-toggle': () => { S.bot.bridge = !S.bot.bridge; bridge('bedwars_bridge', { enabled: S.bot.bridge }, S.bot.bridge ? 'Bridge trainer on' : 'Bridge trainer off'); renderView(); },
@@ -580,6 +599,7 @@ function onBind(e) {
     case 'hud-opacity': widget(S.hudSel).opacity = +v; $('#v-op').textContent = Math.round(v / 2.55) + '%'; $(`.hw[data-k="${S.hudSel}"]`).style.setProperty('--o', (v / 255).toFixed(2)); saveCfg(); break;
     case 'zoom-fov': c.qol.zoom_fov = +v; $('#v-zoom').textContent = v + '°'; saveCfg(); break;
     case 'bot-style': S.bot.style = v; break;
+    case 'bot-arena': S.bot.arena = v; break;
     case 'bot-diff': S.bot.difficulty = +v; $('#v-diff').textContent = Math.round(v * 100) + '%'; break;
     case 'while': c.while_playing = v; saveCfg(); break;
     case 'ram': c.ram_mb = +v; $('#v-ram').textContent = (v / 1024).toFixed(1) + ' GB'; saveCfg(); break;

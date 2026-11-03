@@ -25,7 +25,7 @@ public final class Menu {
     public interface Host {
         void settingsChanged();
 
-        void requestBot(String style, float difficulty);
+        void requestBot(String style, float difficulty, String arena, boolean kit);
 
         void clearBots();
 
@@ -51,6 +51,8 @@ public final class Menu {
     public Tab tab = Tab.HUD;
     public String selected = "cps";
     public int styleIdx;
+    public int arenaIdx;
+    public boolean kit;
     public float difficulty = 0.8f;
     public String message = "";
 
@@ -262,7 +264,7 @@ public final class Menu {
 
     private void trainerTab(Canvas c, int sw, int sh) {
         int w = 300;
-        int h = 150;
+        int h = 196;
         int x = (sw - w) / 2;
         int y = 44;
         panel(c, x, y, w, h);
@@ -278,25 +280,33 @@ public final class Menu {
         if (button(c, x + 80, y + 42, 16, 14, "-", false)) difficulty = Math.max(0.1f, round05(difficulty - 0.05f));
         c.text(Math.round(difficulty * 100) + "%", x + 102, y + 46, TEXT);
         if (button(c, x + 134, y + 42, 16, 14, "+", false)) difficulty = Math.min(1f, round05(difficulty + 0.05f));
-        if (button(c, x + 8, y + 64, 90, 18, "Spawn bot", false)) {
+        c.text("Arena", x + 8, y + 68, DIM);
+        int ax = x + 50;
+        for (int i = 0; i < ArenaPlan.KINDS.length; i++) {
+            int aw = c.width(ArenaPlan.NAMES[i]) + 10;
+            if (button(c, ax, y + 64, aw, 16, ArenaPlan.NAMES[i], arenaIdx == i)) arenaIdx = i;
+            ax += aw + 3;
+        }
+        if (toggle(c, x + 6, y + 84, w - 12, "Give me a kit", kit)) kit = !kit;
+        if (button(c, x + 8, y + 104, 90, 18, "Spawn bot", false)) {
             if (host.launcherConnected()) {
-                host.requestBot(STYLES[styleIdx], difficulty);
+                host.requestBot(STYLES[styleIdx], difficulty, ArenaPlan.KINDS[arenaIdx], kit);
                 message = STYLE_NAMES[styleIdx] + " bot requested";
             } else {
                 message = "Start the game from the Frost launcher to use bots";
             }
         }
-        if (button(c, x + 104, y + 64, 90, 18, "Remove bots", false)) {
+        if (button(c, x + 104, y + 104, 90, 18, "Remove bots", false)) {
             host.clearBots();
             message = "Bots removed";
         }
-        c.text(host.launcherConnected() ? "Launcher connected" : "Launcher not connected", x + 8, y + 90, host.launcherConnected() ? ACCENT : 0xFFFF8A9A);
+        c.text(host.launcherConnected() ? "Launcher connected" : "Launcher not connected", x + 8, y + 128, host.launcherConnected() ? ACCENT : 0xFFFF8A9A);
 
-        if (toggle(c, x + 6, y + 108, w - 12, "Knockback trainer", state.knockbackTrainer)) {
+        if (toggle(c, x + 6, y + 148, w - 12, "Knockback trainer", state.knockbackTrainer)) {
             state.knockbackTrainer = !state.knockbackTrainer;
             message = "Knockback trainer " + (state.knockbackTrainer ? "on" : "off");
         }
-        if (toggle(c, x + 6, y + 124, w - 12, "Bedwars bridge trainer", state.bedwarsBridgeTrainer)) {
+        if (toggle(c, x + 6, y + 164, w - 12, "Bedwars bridge trainer", state.bedwarsBridgeTrainer)) {
             state.bedwarsBridgeTrainer = !state.bedwarsBridgeTrainer;
             message = "Bridge trainer " + (state.bedwarsBridgeTrainer ? "on" : "off");
         }

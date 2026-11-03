@@ -2,12 +2,16 @@ package dev.frost.mc;
 
 import dev.frost.core.FrostState;
 import dev.frost.core.Models;
+import net.minecraft.client.CloudStatus;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.OptionInstance;
 import net.minecraft.server.level.ParticleStatus;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import org.lwjgl.glfw.GLFW;
+
+import java.util.function.UnaryOperator;
 
 /**
  * Quality-of-life features that only need public option / player APIs (no mixins):
@@ -22,7 +26,43 @@ public final class QolApplier {
     private static boolean boostApplied;
     private static int savedRenderDistance = -1;
 
+    /** Remembers the user's own value of an option while we override it. */
+    private static final class Saved<T> {
+        boolean active;
+        T orig;
+    }
+
+    private static final Saved<Boolean> SHADOWS = new Saved<>();
+    private static final Saved<Integer> BLEND = new Saved<>();
+    private static final Saved<Integer> SIM = new Saved<>();
+    private static final Saved<Integer> BLUR = new Saved<>();
+    private static final Saved<CloudStatus> CLOUDS = new Saved<>();
+
     private QolApplier() {}
+
+    /** Applies (or restores) one option; only touches the option when its value actually differs. */
+    private static <T> void force(OptionInstance<T> opt, Saved<T> s, boolean want, UnaryOperator<T> target) {
+        if (want) {
+            if (!s.active) {
+                s.orig = opt.get();
+                s.active = true;
+            }
+            T v = target.apply(s.orig);
+            if (!v.equals(opt.get())) opt.set(v);
+        } else if (s.active) {
+            opt.set(s.orig);
+            s.active = false;
+        }
+    }
+
+    private static void performance(Minecraft mc, Models.Qol q) {
+        force(mc.options.entityShadows(), SHADOWS, q.no_entity_shadows, v -> Boolean.FALSE);
+        force(mc.options.biomeBlendRadius(), BLEND, q.low_biome_blend, v -> Math.min(v, 1));
+        final int cap = Math.max(2, q.sim_distance_cap);
+        force(mc.options.simulationDistance(), SIM, q.cap_sim_distance, v -> Math.min(v, cap));
+        force(mc.options.menuBackgroundBlurriness(), BLUR, q.no_menu_blur, v -> 0);
+        force(mc.options.cloudStatus(), CLOUDS, q.no_clouds, v -> CloudStatus.OFF);
+    }
 
     public static void tick(Minecraft mc) {
         LocalPlayer p = mc.player;
@@ -31,6 +71,8 @@ public final class QolApplier {
             return;
         }
         Models.Qol q = FrostState.INSTANCE.qol;
+
+        performance(mc, q);
 
         // --- fullbright: permanent, invisible, client-side night vision -----------------------------
         if (q.fullbright) {

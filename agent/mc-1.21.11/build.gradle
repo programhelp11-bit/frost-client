@@ -22,6 +22,9 @@ sourceSets {
             srcDir '../core/src/main/java'
             srcDir '../mc-common/src/main/java'
         }
+        resources {
+            srcDir '../mc-common/src/main/resources'
+        }
     }
 }
 

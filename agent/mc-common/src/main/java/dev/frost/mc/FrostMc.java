@@ -27,13 +27,15 @@ public final class FrostMc {
             link.send(m);
         }
 
-        public void requestBot(String style, float difficulty) {
+        public void requestBot(String style, float difficulty, String arena, boolean kit) {
             if (link == null) return;
             JsonObject m = new JsonObject();
             m.addProperty("type", "request_bot");
             m.addProperty("style", style);
             m.addProperty("difficulty", difficulty);
             m.addProperty("legacy", FrostState.INSTANCE.kbProfile.legacy);
+            m.addProperty("arena", arena);
+            m.addProperty("kit", kit);
             link.send(m);
         }
 

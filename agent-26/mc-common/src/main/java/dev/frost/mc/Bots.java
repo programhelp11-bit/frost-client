@@ -65,7 +65,15 @@ public final class Bots {
             st.botCommands.clear();
         }
         Models.BotConfig cfg;
-        while ((cfg = st.spawnQueue.poll()) != null) spawn(level, player, cfg);
+        while ((cfg = st.spawnQueue.poll()) != null) {
+            // Bots are a training feature: never spawn them on multiplayer servers.
+            if (mc.getSingleplayerServer() == null) {
+                player.displayClientMessage(Component.literal("§bFrost§r: bots only work in singleplayer"), false);
+                continue;
+            }
+            Arena.setup(mc, cfg);
+            spawn(level, player, cfg);
+        }
 
         boolean attackNow = mc.options.keyAttack.isDown();
         boolean attackPressed = attackNow && !lastAttack;
@@ -89,8 +97,14 @@ public final class Bots {
         RemotePlayer e = new RemotePlayer(level, profile);
         e.setId(-1000 - cfg.id);
         double yaw = Math.toRadians(p.getYRot());
-        e.setPos(p.getX() - Math.sin(yaw) * 4.0, p.getY(), p.getZ() + Math.cos(yaw) * 4.0);
-        e.setYRot(p.getYRot() + 180f);
+        double[] arenaSpawn = Arena.botSpawn;
+        if (arenaSpawn != null) {
+            e.setPos(arenaSpawn[0], arenaSpawn[1], arenaSpawn[2]);
+            e.setYRot(0f);
+        } else {
+            e.setPos(p.getX() - Math.sin(yaw) * 4.0, p.getY(), p.getZ() + Math.cos(yaw) * 4.0);
+            e.setYRot(p.getYRot() + 180f);
+        }
         e.setCustomName(Component.literal(cfg.name));
         e.setCustomNameVisible(true);
 

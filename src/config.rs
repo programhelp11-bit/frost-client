@@ -17,6 +17,16 @@ pub fn settings_path() -> PathBuf {
     data_dir().join("settings.json")
 }
 
+/// Tuned G1 flags for a game client: short pauses, early concurrent cycles, young-gen headroom.
+pub const OPTIMIZED_JVM_ARGS: &str = "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=40 \
+-XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 \
+-XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 \
+-XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 \
+-XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1";
+
+/// The flags older builds shipped; replaced by [`OPTIMIZED_JVM_ARGS`] when found unchanged.
+const OLD_DEFAULT_JVM_ARGS: &str = "-XX:+UseG1GC -XX:MaxGCPauseMillis=50 -XX:+DisableExplicitGC";
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -48,7 +58,7 @@ impl Default for Settings {
         Self {
             selected_version: "1.21.11".into(),
             ram_mb: 3072,
-            jvm_args: "-XX:+UseG1GC -XX:MaxGCPauseMillis=50 -XX:+DisableExplicitGC".into(),
+            jvm_args: OPTIMIZED_JVM_ARGS.split_whitespace().collect::<Vec<_>>().join(" "),
             java_path: String::new(),
             frost_api: "https://api.frostclient.example".into(),
             ms_client_id: String::new(),
@@ -64,10 +74,14 @@ impl Default for Settings {
 
 impl Settings {
     pub fn load() -> Self {
-        std::fs::read_to_string(settings_path())
+        let mut s: Settings = std::fs::read_to_string(settings_path())
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if s.jvm_args.trim() == OLD_DEFAULT_JVM_ARGS {
+            s.jvm_args = Settings::default().jvm_args;
+        }
+        s
     }
 
     pub fn save(&self) -> Result<()> {

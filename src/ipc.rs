@@ -43,7 +43,15 @@ pub enum FromGame {
     /// The player edited HUD / QoL in the in-game Frost menu; persisted by the launcher.
     UiSettings { qol: QolSettings, hud: HudLayout },
     /// Trainer menu: spawn a bot (the brain runs here).
-    RequestBot { style: crate::trainer::CombatStyle, difficulty: f32, legacy: bool },
+    RequestBot {
+        style: crate::trainer::CombatStyle,
+        difficulty: f32,
+        legacy: bool,
+        #[serde(default)]
+        arena: Option<String>,
+        #[serde(default)]
+        kit: bool,
+    },
     /// Trainer menu: remove all bots.
     RequestClearBots,
 }
@@ -88,7 +96,20 @@ impl IpcHandle {
 
     /// Register a trainer bot and tell the game to spawn it.
     pub fn spawn_bot(&self, name: &str, style: crate::trainer::CombatStyle, difficulty: f32, legacy: bool) -> bool {
-        let bot = self.shared.lock().unwrap().trainer.spawn(name, style, difficulty, legacy);
+        self.spawn_bot_in(name, style, difficulty, legacy, "none", false)
+    }
+
+    /// Same, plus an arena (`none` | `flat` | `crystal` | `island`) and an optional kit.
+    pub fn spawn_bot_in(
+        &self,
+        name: &str,
+        style: crate::trainer::CombatStyle,
+        difficulty: f32,
+        legacy: bool,
+        arena: &str,
+        kit: bool,
+    ) -> bool {
+        let bot = self.shared.lock().unwrap().trainer.spawn_in(name, style, difficulty, legacy, arena, kit);
         self.send(ToGame::SpawnBot { bot })
     }
 
@@ -181,8 +202,9 @@ fn handle_message(msg: FromGame, h: &IpcHandle) -> Option<ToGame> {
             shared.pending_settings = Some((qol, hud));
             None
         }
-        FromGame::RequestBot { style, difficulty, legacy } => {
-            let bot = shared.trainer.spawn("Frost Bot", style, difficulty.clamp(0.1, 1.0), legacy);
+        FromGame::RequestBot { style, difficulty, legacy, arena, kit } => {
+            let arena = arena.unwrap_or_else(|| "none".to_owned());
+            let bot = shared.trainer.spawn_in("Frost Bot", style, difficulty.clamp(0.1, 1.0), legacy, &arena, kit);
             Some(ToGame::SpawnBot { bot })
         }
         FromGame::RequestClearBots => {

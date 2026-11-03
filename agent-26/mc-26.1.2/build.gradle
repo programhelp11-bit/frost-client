@@ -19,6 +19,9 @@ sourceSets {
             srcDir '../../agent/core/src/main/java'
             srcDir '../mc-common/src/main/java'
         }
+        resources {
+            srcDir '../../agent/mc-common/src/main/resources'
+        }
     }
 }
 

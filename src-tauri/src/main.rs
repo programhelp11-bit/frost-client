@@ -335,9 +335,16 @@ fn ipc_status(st: State<'_, AppState>) -> Value {
 }
 
 #[tauri::command]
-fn spawn_bot(st: State<'_, AppState>, style: CombatStyle, difficulty: f32) -> Result<bool, String> {
+fn spawn_bot(
+    st: State<'_, AppState>,
+    style: CombatStyle,
+    difficulty: f32,
+    arena: Option<String>,
+    kit: Option<bool>,
+) -> Result<bool, String> {
     let legacy = st.settings.lock().unwrap().selected_version == "1.8.9";
-    Ok(ipc_of(&st)?.spawn_bot("Frost Bot", style, difficulty.clamp(0.1, 1.0), legacy))
+    let arena = arena.unwrap_or_else(|| "none".to_owned());
+    Ok(ipc_of(&st)?.spawn_bot_in("Frost Bot", style, difficulty.clamp(0.1, 1.0), legacy, &arena, kit.unwrap_or(false)))
 }
 
 #[tauri::command]
@@ -376,6 +383,24 @@ async fn mr_install(st: State<'_, AppState>, project_id: String, mc: String) -> 
         .await
         .map_err(err)?;
     serde_json::to_value(added).map_err(err)
+}
+
+/// Performance mods from Modrinth (Fabric versions only). Failures are reported per mod, so a
+/// mod that has no build for this Minecraft version does not abort the rest.
+#[tauri::command]
+async fn install_perf_pack(st: State<'_, AppState>, mc: String) -> Result<Value, String> {
+    if !versions::SUPPORTED.contains(&mc.as_str()) {
+        return Err(format!("Unsupported version {mc}"));
+    }
+    if modrinth::loader_name(&mc) != "fabric" {
+        return Err("The performance pack is for the Fabric versions; 1.8.9 uses Frost's built-in optimizations".into());
+    }
+    let mut results = Vec::new();
+    for slug in ["sodium", "lithium", "ferrite-core", "entityculling", "immediatelyfast", "modernfix"] {
+        let r = modrinth::install(&st.http, slug, &mc, Arc::new(Progress::default())).await;
+        results.push(json!({ "mod": slug, "ok": r.is_ok(), "error": r.err().map(|e| e.to_string()) }));
+    }
+    Ok(Value::Array(results))
 }
 
 #[tauri::command]
@@ -483,6 +508,7 @@ fn main() {
             bedwars_bridge,
             mr_search,
             mr_install,
+            install_perf_pack,
             mr_installed,
             mr_remove,
             open_instance_folder,

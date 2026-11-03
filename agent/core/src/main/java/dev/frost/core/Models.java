@@ -24,6 +24,13 @@ public final class Models {
         public boolean fps_boost = true;
         public boolean chunk_optimizer = true;
         public int chunk_render_cap = 12;
+        public boolean no_clouds = false;
+        public boolean no_entity_shadows = true;
+        public boolean low_biome_blend = true;
+        public boolean cap_sim_distance = true;
+        public int sim_distance_cap = 8;
+        public boolean no_menu_blur = true;
+        public boolean fast_graphics = true;
     }
 
     public static final class Widget {
@@ -74,6 +81,9 @@ public final class Models {
         public String style = "sword";
         public float difficulty = 0.5f;
         public boolean legacy_combat;
+        /** none | flat | crystal | island */
+        public String arena = "none";
+        public boolean kit;
     }
 
     public static final class BotCommand {

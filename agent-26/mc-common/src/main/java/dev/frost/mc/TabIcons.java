@@ -1,10 +1,13 @@
 package dev.frost.mc;
 
 import dev.frost.core.FrostState;
+import com.google.gson.JsonObject;
+import com.mojang.serialization.JsonOps;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.ComponentSerialization;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.world.scores.PlayerTeam;
 
@@ -17,9 +20,28 @@ import java.util.List;
  * Frost user (cosmetics lookup); the local player always counts.
  */
 public final class TabIcons {
-    private static final String FLAKE = "❄";
+    /** Private-use code point of the Frost icon font (assets/frost/font/icons.json). */
+    private static final String ICON = "\uE000";
+    private static final String FALLBACK = "❄";
+    private static Component icon;
 
     private TabIcons() {}
+
+    /** The pixel snowflake from our own font; falls back to a plain glyph if it cannot be built. */
+    private static Component icon() {
+        if (icon == null) {
+            try {
+                JsonObject o = new JsonObject();
+                o.addProperty("text", ICON);
+                o.addProperty("font", "frost:icons");
+                icon = ComponentSerialization.CODEC.parse(JsonOps.INSTANCE, o).result().orElse(null);
+            } catch (Throwable ignored) {
+                icon = null;
+            }
+            if (icon == null) icon = Component.literal(FALLBACK).withStyle(ChatFormatting.AQUA);
+        }
+        return icon;
+    }
 
     public static void tick(Minecraft mc, int ticks) {
         if (mc.getConnection() == null || mc.level == null || mc.player == null) return;
@@ -34,12 +56,13 @@ public final class TabIcons {
 
             boolean frost = uuid.equals(self) || FrostState.INSTANCE.isFrost(uuid);
             Component current = info.getTabListDisplayName();
-            boolean hasFlake = current != null && current.getString().startsWith(FLAKE);
+            String shownText = current == null ? "" : current.getString();
+            boolean hasFlake = shownText.startsWith(ICON) || shownText.startsWith(FALLBACK);
 
             if (frost && !hasFlake) {
                 PlayerTeam team = mc.level.getScoreboard().getPlayersTeam(name);
                 MutableComponent shown = PlayerTeam.formatNameForTeam(team, Component.literal(name));
-                info.setTabListDisplayName(Component.literal(FLAKE + " ").withStyle(ChatFormatting.AQUA).append(shown));
+                info.setTabListDisplayName(Component.empty().append(icon()).append(Component.literal(" ")).append(shown));
             } else if (!frost && hasFlake) {
                 info.setTabListDisplayName(null);
             }

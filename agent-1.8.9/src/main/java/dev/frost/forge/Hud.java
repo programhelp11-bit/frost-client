@@ -88,33 +88,33 @@ public final class Hud {
         }
         if (rows.isEmpty()) return;
         int width = 0;
-        for (String[] r : rows) width = Math.max(width, font.getStringWidth(r[0]) + 6 + font.getStringWidth(r[1]));
-        int h = rows.size() * (font.FONT_HEIGHT + 2) + 6;
-        panel(0, 0, width + 12, h, tint);
-        int y = 4;
+        for (String[] r : rows) width = Math.max(width, font.getStringWidth(r[0]) + 8 + font.getStringWidth(r[1]));
+        int h = rows.size() * (font.FONT_HEIGHT + 3) + 5;
+        panel(0, 0, width + 22, h, tint);
+        int y = 5;
         for (String[] r : rows) {
-            font.drawStringWithShadow(r[0], 6, y, DIM);
-            font.drawStringWithShadow(r[1], 6 + font.getStringWidth(r[0]) + 6, y, TEXT);
-            y += font.FONT_HEIGHT + 2;
+            font.drawStringWithShadow(r[0], 9, y, DIM);
+            font.drawStringWithShadow(r[1], 9 + font.getStringWidth(r[0]) + 8, y, TEXT);
+            y += font.FONT_HEIGHT + 3;
         }
     }
 
     private static void armor(Minecraft mc, FontRenderer font, int tint) {
-        panel(0, 0, 62, 4 * 18 + 6, tint);
+        panel(0, 0, 68, 4 * 18 + 6, tint);
         for (int i = 0; i < 4; i++) {
             ItemStack st = mc.thePlayer.inventory.armorInventory[3 - i];
             int y = 3 + i * 18;
             if (st == null) {
-                font.drawStringWithShadow("-", 8, y + 4, DIM);
+                font.drawStringWithShadow("-", 13, y + 4, DIM);
                 continue;
             }
             RenderHelper.enableGUIStandardItemLighting();
-            mc.getRenderItem().renderItemAndEffectIntoGUI(st, 4, y);
+            mc.getRenderItem().renderItemAndEffectIntoGUI(st, 8, y);
             RenderHelper.disableStandardItemLighting();
             GlStateManager.disableLighting();
             if (st.isItemStackDamageable()) {
                 int pct = Math.round(100f * (1f - (float) st.getItemDamage() / Math.max(1, st.getMaxDamage())));
-                font.drawStringWithShadow(pct + "%", 24, y + 4, pct > 50 ? TEXT : (pct > 20 ? 0xFFFFC85A : 0xFFFF6464));
+                font.drawStringWithShadow(pct + "%", 28, y + 4, pct > 50 ? TEXT : (pct > 20 ? 0xFFFFC85A : 0xFFFF6464));
             }
         }
     }
@@ -132,17 +132,32 @@ public final class Hud {
     }
 
     private static void key(FontRenderer font, int x, int y, int w, int h, String label, boolean down) {
-        Gui.drawRect(x, y, x + w, y + h, down ? 0xB48FD3FF : 0x660E204E);
-        border(x, y, w, h, down ? 0xFFBFE6FF : 0x906EAAFF);
-        font.drawStringWithShadow(label, x + (w - font.getStringWidth(label)) / 2, y + (h - font.FONT_HEIGHT) / 2 + 1, TEXT);
+        roundedFill(x, y + 1, w, h, 2, 0x50000000);
+        roundedFill(x, y, w, h, 2, down ? 0xE08FD3FF : 0xA0122A5C);
+        if (!down) Gui.drawRect(x + 2, y, x + w - 2, y + 1, 0x40BFE6FF);
+        int labelColor = down ? 0xFF0B1B3A : TEXT;
+        font.drawStringWithShadow(label, x + (w - font.getStringWidth(label)) / 2, y + (h - font.FONT_HEIGHT) / 2 + 1, labelColor);
     }
 
     private static void panel(int x, int y, int w, int h, int tint) {
         lastW = w;
         lastH = h;
-        Gui.drawRect(x, y, x + w, y + h, tint);
-        border(x, y, w, h, 0x8C6EAAFF);
-        if (w >= 26) snowflake(x + w - 8, y + 2);
+        roundedFill(x, y + 1, w, h, 3, 0x48000000);
+        roundedFill(x, y, w, h, 3, tint);
+        Gui.drawRect(x + 2, y + 1, x + w - 2, y + 3, 0x16FFFFFF);
+        Gui.drawRect(x + 3, y, x + w - 3, y + 1, 0x70BFE6FF);
+        Gui.drawRect(x + 3, y + h - 1, x + w - 3, y + h, 0x40000000);
+        Gui.drawRect(x + 3, y + 4, x + 5, y + h - 4, 0xFF8FD3FF);
+        if (w >= 34) snowflake(x + w - 9, y + 3);
+    }
+
+    private static void roundedFill(int x, int y, int w, int h, int r, int color) {
+        Gui.drawRect(x, y + r, x + w, y + h - r, color);
+        for (int i = 0; i < r; i++) {
+            int inset = r - i;
+            Gui.drawRect(x + inset, y + i, x + w - inset, y + i + 1, color);
+            Gui.drawRect(x + inset, y + h - 1 - i, x + w - inset, y + h - i, color);
+        }
     }
 
     private static void snowflake(int x, int y) {

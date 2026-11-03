@@ -57,7 +57,15 @@ public final class Bots {
             st.botCommands.clear();
         }
         Models.BotConfig cfg;
-        while ((cfg = st.spawnQueue.poll()) != null) spawn(world, player, cfg);
+        while ((cfg = st.spawnQueue.poll()) != null) {
+            // Bots are a training feature: never spawn them on multiplayer servers.
+            if (!mc.isSingleplayer()) {
+                player.addChatMessage(new net.minecraft.util.ChatComponentText("\u00a7bFrost\u00a7r: bots only work in singleplayer"));
+                continue;
+            }
+            Arena.setup(mc, cfg);
+            spawn(world, player, cfg);
+        }
 
         boolean attackNow = mc.gameSettings.keyBindAttack.isKeyDown();
         boolean attackPressed = attackNow && !lastAttack;
@@ -80,7 +88,12 @@ public final class Bots {
         EntityOtherPlayerMP e = new EntityOtherPlayerMP(world, profile);
         e.setEntityId(-1000 - cfg.id);
         double yaw = Math.toRadians(p.rotationYaw);
-        e.setLocationAndAngles(p.posX - Math.sin(yaw) * 4.0, p.posY, p.posZ + Math.cos(yaw) * 4.0, p.rotationYaw + 180f, 0f);
+        double[] arenaSpawn = Arena.botSpawn;
+        if (arenaSpawn != null) {
+            e.setLocationAndAngles(arenaSpawn[0], arenaSpawn[1], arenaSpawn[2], 0f, 0f);
+        } else {
+            e.setLocationAndAngles(p.posX - Math.sin(yaw) * 4.0, p.posY, p.posZ + Math.cos(yaw) * 4.0, p.rotationYaw + 180f, 0f);
+        }
         e.rotationYawHead = e.rotationYaw;
         e.setCustomNameTag(cfg.name);
         e.setAlwaysRenderNameTag(true);

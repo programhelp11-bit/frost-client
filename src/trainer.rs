@@ -119,6 +119,16 @@ pub struct BotConfig {
     pub difficulty: f32,
     /// 1.8.9 rules: no attack cooldown, CPS based hitting.
     pub legacy_combat: bool,
+    /// Practice arena the game builds around the player: none | flat | crystal | island.
+    #[serde(default = "default_arena")]
+    pub arena: String,
+    /// Give the player a matching kit (armor, weapons, blocks, food).
+    #[serde(default)]
+    pub kit: bool,
+}
+
+fn default_arena() -> String {
+    "none".to_owned()
 }
 
 /// What the bot "sees" this tick.
@@ -171,6 +181,15 @@ pub struct BotBrain {
     wtap_timer: f32,
     crystal_timer: f32,
     shield_timer: f32,
+    /// Seconds since the bot left the ground (used to time critical hits on the way down).
+    air_time: f32,
+    jump_cooldown: f32,
+    /// While > 0 the bot backs off and circles instead of trading (low health / big knockback).
+    retreat_left: f32,
+    last_dist: f32,
+    /// Smoothed lateral speed of the target, used for counter-strafing.
+    target_lateral: f32,
+    hits_landed: u32,
 }
 
 impl BotBrain {
@@ -191,6 +210,12 @@ impl BotBrain {
             wtap_timer: 0.0,
             crystal_timer: 0.0,
             shield_timer: 0.0,
+            air_time: 0.0,
+            jump_cooldown: 0.0,
+            retreat_left: 0.0,
+            last_dist: 0.0,
+            target_lateral: 0.0,
+            hits_landed: 0,
         }
     }
 
@@ -233,6 +258,23 @@ impl BotBrain {
         let reach = self.reach();
         let aimed = yaw_err.abs() < 8.0 + 25.0 * (1.0 - d);
 
+        // --- bookkeeping ----------------------------------------------------------------------------
+        if obs.on_ground {
+            self.air_time = 0.0;
+        } else {
+            self.air_time += dt;
+        }
+        self.jump_cooldown = (self.jump_cooldown - dt).max(0.0);
+        self.retreat_left = (self.retreat_left - dt).max(0.0);
+        // How fast the target slides sideways relative to us (positive = to our left).
+        let flat = (obs.target_pos - obs.bot_pos).horizontal_len().max(0.001);
+        let (nx, nz) = ((obs.target_pos.x - obs.bot_pos.x) / flat, (obs.target_pos.z - obs.bot_pos.z) / flat);
+        let lateral = (obs.target_vel.x * nz - obs.target_vel.z * nx) as f32;
+        self.target_lateral += (lateral - self.target_lateral) * 0.25;
+        // Sudden jump in distance while we were close = we just ate knockback.
+        let knocked = self.last_dist > 0.0 && self.last_dist < 3.2 && (dist as f32 - self.last_dist) > 1.4;
+        self.last_dist = dist as f32;
+
         // --- reaction time: first contact is delayed ------------------------------------------------
         let in_range = dist <= reach + 0.2;
         if in_range && !self.had_target_in_range {
@@ -241,12 +283,27 @@ impl BotBrain {
         self.had_target_in_range = in_range;
         self.reaction_left = (self.reaction_left - dt).max(0.0);
 
+        // --- tactics: back off when hurt, re-engage hard after knockback ---------------------------------
+        if obs.bot_health > 0.0 && obs.bot_health <= 6.0 && d > 0.5 && self.retreat_left <= 0.0 && self.rng.gen::<f32>() < 0.05 {
+            self.retreat_left = 1.2 + self.rng.gen::<f32>();
+        }
+        let retreating = self.retreat_left > 0.0;
+        if knocked && obs.on_ground && d > 0.3 {
+            // sprint-jump straight back into the fight
+            cmd.jump = true;
+            self.jump_cooldown = 0.6;
+        }
+
         // --- movement: approach, keep spacing, strafe ---------------------------------------------
         self.strafe_timer -= dt;
         if self.strafe_timer <= 0.0 {
-            self.strafe_timer = 0.35 + self.rng.gen::<f32>() * 0.9;
+            self.strafe_timer = 0.3 + self.rng.gen::<f32>() * (1.0 - 0.4 * d);
             if self.rng.gen::<f32>() < 0.55 {
                 self.strafe_dir = -self.strafe_dir;
+            }
+            // Sharper bots shadow the player's sideways movement to stay lined up.
+            if d > 0.45 && self.target_lateral.abs() > 0.08 && self.rng.gen::<f32>() < d {
+                self.strafe_dir = if self.target_lateral > 0.0 { -1.0 } else { 1.0 };
             }
         }
         let ideal = match self.cfg.style {
@@ -254,7 +311,14 @@ impl BotBrain {
             CombatStyle::Mace => 2.2,
             _ => 2.4,
         };
-        if dist > ideal + 0.3 {
+        // Spacing: after swinging, step out of the player's reach, then dash back in for the next hit.
+        let kiting = d > 0.5 && !self.cfg.legacy_combat && self.attack_timer > 0.25
+            && dist < reach + 0.5 && self.cfg.style != CombatStyle::Crystal;
+        if retreating {
+            cmd.backward = true;
+        } else if kiting {
+            cmd.backward = true;
+        } else if dist > ideal + 0.3 {
             cmd.forward = true;
             cmd.sprint = true;
         } else if dist < ideal - 0.6 {
@@ -273,8 +337,20 @@ impl BotBrain {
             cmd.sprint = false;
             cmd.forward = false;
         }
-        // Occasional jumps in close range (crits for sharper bots).
-        if obs.on_ground && dist < 4.0 && self.rng.gen::<f32>() < 0.02 + 0.05 * d {
+
+        // --- jumping: critical hits for sharper bots, small random hops for weak ones --------------
+        let crit_style = !self.cfg.legacy_combat && d > 0.5
+            && matches!(self.cfg.style, CombatStyle::Sword | CombatStyle::AxeShield | CombatStyle::BedwarsRush);
+        let wants_crit_jump = crit_style
+            && obs.on_ground
+            && self.jump_cooldown <= 0.0
+            && !retreating
+            && self.attack_timer < 0.3
+            && dist < reach + 0.9;
+        if wants_crit_jump {
+            cmd.jump = true;
+            self.jump_cooldown = 0.75;
+        } else if obs.on_ground && dist < 4.0 && !crit_style && self.rng.gen::<f32>() < 0.02 + 0.05 * d {
             cmd.jump = true;
         }
 
@@ -283,14 +359,20 @@ impl BotBrain {
         match self.cfg.style {
             CombatStyle::Crystal => self.crystal_logic(obs, d, dt, &mut cmd),
             _ => {
-                let ready = self.attack_timer <= 0.0 && self.reaction_left <= 0.0;
+                let mut ready = self.attack_timer <= 0.0 && self.reaction_left <= 0.0;
+                // Crits need a falling attack: hold the swing while still rising after the jump.
+                if crit_style && !obs.on_ground && self.air_time < 0.3 {
+                    ready = false;
+                }
                 let can_hit = in_range && dist <= reach && aimed;
                 if self.cfg.style == CombatStyle::AxeShield {
                     self.shield_logic(obs, d, dt, can_hit && ready, &mut cmd);
                 }
                 if ready && can_hit && !cmd.use_item {
                     cmd.attack = true;
+                    self.hits_landed += 1;
                     self.attack_timer = self.next_attack_interval(d);
+                    // longer W-taps once a combo is rolling
                     self.wtap_timer = if d > 0.4 { 0.12 } else { 0.0 };
                 }
             }
@@ -455,6 +537,19 @@ pub struct TrainerManager {
 impl TrainerManager {
     /// Register a bot and return the config to send to the game (which spawns the entity).
     pub fn spawn(&mut self, name: &str, style: CombatStyle, difficulty: f32, legacy: bool) -> BotConfig {
+        self.spawn_in(name, style, difficulty, legacy, "none", false)
+    }
+
+    /// Like [`spawn`](Self::spawn) but also asks the game to build an arena and hand out a kit.
+    pub fn spawn_in(
+        &mut self,
+        name: &str,
+        style: CombatStyle,
+        difficulty: f32,
+        legacy: bool,
+        arena: &str,
+        kit: bool,
+    ) -> BotConfig {
         self.next_id += 1;
         let cfg = BotConfig {
             id: self.next_id,
@@ -462,6 +557,8 @@ impl TrainerManager {
             style,
             difficulty,
             legacy_combat: legacy,
+            arena: arena.to_owned(),
+            kit,
         };
         self.bots.insert(cfg.id, BotBrain::new(cfg.clone()));
         cfg
@@ -493,7 +590,7 @@ mod tests {
     use super::*;
 
     fn cfg(style: CombatStyle, d: f32, legacy: bool) -> BotConfig {
-        BotConfig { id: 1, name: "Bot".into(), style, difficulty: d, legacy_combat: legacy }
+        BotConfig { id: 1, name: "Bot".into(), style, difficulty: d, legacy_combat: legacy, arena: "none".into(), kit: false }
     }
 
     fn obs(dist: f64) -> Obs {
@@ -618,6 +715,45 @@ mod tests {
         assert!(m.tick(a.id, &obs(3.0)).is_some());
         m.clear();
         assert!(m.is_empty());
+    }
+
+    #[test]
+    fn sharp_bot_jumps_for_crits_but_holds_swing_while_rising() {
+        let mut b = BotBrain::with_seed(cfg(CombatStyle::Sword, 1.0, false), 7);
+        let mut jumped = false;
+        for _ in 0..40 {
+            jumped |= b.tick(&obs(2.4)).jump;
+        }
+        assert!(jumped, "a sharp 1.9+ bot should jump to crit");
+        let mut rising = obs(2.2);
+        rising.on_ground = false;
+        let mut b2 = BotBrain::with_seed(cfg(CombatStyle::Sword, 1.0, false), 8);
+        for _ in 0..3 {
+            assert!(!b2.tick(&rising).attack, "must not swing while still rising");
+        }
+    }
+
+    #[test]
+    fn hurt_bot_backs_off() {
+        let mut b = BotBrain::with_seed(cfg(CombatStyle::Sword, 1.0, false), 9);
+        let mut o = obs(2.0);
+        o.bot_health = 3.0;
+        let mut backed = false;
+        for _ in 0..200 {
+            backed |= b.tick(&o).backward;
+        }
+        assert!(backed);
+    }
+
+    #[test]
+    fn spawn_in_carries_arena_and_kit() {
+        let mut m = TrainerManager::default();
+        let c = m.spawn_in("A", CombatStyle::Crystal, 0.5, false, "crystal", true);
+        assert_eq!(c.arena, "crystal");
+        assert!(c.kit);
+        let json = serde_json::to_string(&c).unwrap();
+        let old: BotConfig = serde_json::from_str(&json.replace(",\"arena\":\"crystal\",\"kit\":true", "")).unwrap();
+        assert_eq!(old.arena, "none");
     }
 
     #[test]
