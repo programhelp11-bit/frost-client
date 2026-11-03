@@ -170,9 +170,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
 .cos .card{padding:22px}
 .cos h3{font-size:18px;margin-bottom:4px}
 .cos p{color:var(--ink-3);font-size:13px;margin-bottom:14px;line-height:1.5}
-.drop{border:1.5px dashed var(--line-2);border-radius:12px;padding:26px;text-align:center;color:var(--ink-2);cursor:pointer;transition:.15s;margin-bottom:14px}
+.drop{display:block;border:1.5px dashed var(--line-2);border-radius:12px;padding:26px;text-align:center;color:var(--ink-2);cursor:pointer;transition:.15s;margin-bottom:14px}
 .drop:hover,.drop.over{background:rgba(120,170,255,.1);border-color:var(--ice)}
-.preview{display:flex;gap:16px;align-items:center;margin-bottom:14px}
+.preview{display:flex;gap:16px;align-items:center;margin-bottom:14px;min-height:60px}
 .preview img{height:160px;image-rendering:pixelated;background:rgba(10,22,52,.5);border-radius:10px;padding:6px}
 .preview .pimg{max-width:130px;max-height:160px}
 .tag{display:inline-block;font-size:11px;padding:2px 9px;border-radius:7px;background:rgba(143,211,255,.14);color:var(--ice);border:1px solid rgba(143,211,255,.3);margin-left:8px;vertical-align:middle}

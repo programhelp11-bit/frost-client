@@ -461,9 +461,7 @@ function pageSettings() {
     const a = S.st.account;
     body = `<div class="set-sec">MICROSOFT ACCOUNT</div>
       ${a ? setRow(esc(a.username), 'Signed in', `<button class="btn danger sm" data-act="logout">Sign out</button>`)
-        : setRow('Not signed in', 'One click opens the official Microsoft login in your browser.', `<button class="btn sm" data-act="login">Sign in</button>`)}
-      <div class="set-sec">ADVANCED</div>
-      ${setRow('Custom Azure client ID', S.st.client_id_configured ? 'This build already has one built in — normally leave this empty.' : (S.st.client_id_invalid ? `“${esc(S.st.client_id_invalid)}” is not a valid ID (must be a GUID). Paste the Application (client) ID from Azure.` : 'This build has no sign-in app configured. Paste an Azure application (client) ID to enable login.'), `<input class="field" style="width:320px;user-select:text" placeholder="built-in" value="${esc(c.ms_client_id)}" data-bind="cid">`)}`;
+        : setRow('Not signed in', 'One click opens the official Microsoft login in your browser.', `<button class="btn sm" data-act="login">Sign in</button>`)}`;
   } else {
     body = `<div class="set-sec">FROST CLIENT</div>
       ${setRow('Version', esc(S.st.os), `<span class="val">v${esc(S.st.app_version)}</span>`)}
