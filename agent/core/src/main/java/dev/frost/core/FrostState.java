@@ -24,6 +24,15 @@ public final class FrostState {
     /** Last drawn bounds {x, y, w, h} of every HUD widget, filled by the renderer, used by the menu. */
     public final Map<String, int[]> bounds = new ConcurrentHashMap<String, int[]>();
 
+    /** Short on-screen notice (drawn by the HUD for a few seconds). */
+    public volatile String notice = "";
+    public volatile long noticeUntil;
+
+    public void notify(String text) {
+        notice = text;
+        noticeUntil = System.currentTimeMillis() + 3500L;
+    }
+
     public boolean isFrost(String uuidNoDashes) {
         Models.CosmeticEntry e = cosmetics.get(uuidNoDashes);
         return e != null && e.frost;

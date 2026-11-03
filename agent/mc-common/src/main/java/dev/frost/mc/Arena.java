@@ -67,8 +67,8 @@ public final class Arena {
     private static BlockState state(ArenaPlan.Mat m) {
         Block b;
         switch (m) {
-            case FLOOR_A -> b = Blocks.LIGHT_BLUE_CONCRETE;
-            case FLOOR_B -> b = Blocks.WHITE_CONCRETE;
+            case FLOOR_A -> b = Blocks.LAPIS_BLOCK;
+            case FLOOR_B -> b = Blocks.QUARTZ_BLOCK;
             case WALL -> b = Blocks.PACKED_ICE;
             case PILLAR, OBSIDIAN -> b = Blocks.OBSIDIAN;
             case END_STONE -> b = Blocks.END_STONE;

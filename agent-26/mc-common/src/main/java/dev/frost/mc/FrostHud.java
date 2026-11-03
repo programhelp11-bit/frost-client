@@ -47,6 +47,14 @@ public final class FrostHud {
             g.pose().popMatrix();
             st.bounds.put(w.kind, new int[] {Math.round(w.pos[0]), Math.round(w.pos[1]), Math.round(lastW * w.scale), Math.round(lastH * w.scale)});
         }
+        if (System.currentTimeMillis() < st.noticeUntil && !st.notice.isEmpty()) {
+            int nw = font.width(st.notice) + 16;
+            int nx = (mc.getWindow().getGuiScaledWidth() - nw) / 2;
+            g.pose().pushMatrix();
+            panel(g, nx, 24, nw, 18, 0xC00E204E);
+            g.text(font, st.notice, nx + 9, 29, TEXT, false);
+            g.pose().popMatrix();
+        }
     }
 
     private static void draw(GuiGraphicsExtractor g, Font font, Minecraft mc, Models.Widget w, Models.Stats s, Models.Qol q) {
