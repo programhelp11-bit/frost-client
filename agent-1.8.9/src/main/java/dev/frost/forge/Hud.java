@@ -30,18 +30,25 @@ public final class Hud {
         Models.Stats s = Stats.latest;
         Models.Qol q = st.qol;
         FontRenderer font = mc.fontRendererObj;
+        int cy = 6;
+        net.minecraft.client.gui.ScaledResolution res = new net.minecraft.client.gui.ScaledResolution(mc);
         for (Models.Widget w : st.hud.widgets) {
             if (!w.enabled) continue;
             if (w.kind.equals("coordinates") && !q.show_coordinates && !q.show_biome) continue;
+            boolean keys = w.kind.equals("keystrokes");
+            float sc = Math.max(0.7f, Math.min(1.6f, w.scale));
+            int px = keys ? res.getScaledWidth() - Math.round(70 * sc) : 6;
+            int py = keys ? res.getScaledHeight() - Math.round(66 * sc) : cy;
             GlStateManager.pushMatrix();
-            GlStateManager.translate(w.pos[0], w.pos[1], 0f);
-            GlStateManager.scale(w.scale, w.scale, 1f);
+            GlStateManager.translate(px, py, 0f);
+            GlStateManager.scale(sc, sc, 1f);
             lastW = 0;
             lastH = 0;
             draw(mc, font, w, s, q);
-            if (w.kind.equals("keystrokes")) { lastW = 66; lastH = 58; }
+            if (keys) { lastW = 66; lastH = 58; }
             GlStateManager.popMatrix();
-            st.bounds.put(w.kind, new int[] {Math.round(w.pos[0]), Math.round(w.pos[1]), Math.round(lastW * w.scale), Math.round(lastH * w.scale)});
+            st.bounds.put(w.kind, new int[] {px, py, Math.round(lastW * sc), Math.round(lastH * sc)});
+            if (!keys) cy += Math.round(lastH * sc) + 5;
         }
         GlStateManager.enableBlend();
         GlStateManager.color(1f, 1f, 1f, 1f);
@@ -144,12 +151,8 @@ public final class Hud {
         lastW = w;
         lastH = h;
         int a = (tint >>> 24) & 0xFF;
-        roundedFill(x - 1, y, w + 2, h + 2, 5, 0x20000000);
-        roundedFill(x, y + 1, w, h, 5, 0x40000000);
-        roundedFill(x, y, w, h, 5, 0x468CBEFF);
-        roundedFill(x + 1, y + 1, w - 2, h - 2, 4, (a << 24) | 0x0A1A44);
-        Gui.drawRect(x + 3, y + 1, x + w - 3, y + 1 + Math.max(2, (h - 2) / 2), 0x14BFE6FF);
-        Gui.drawRect(x + 4, y + 1, x + w - 4, y + 2, 0x50DCF0FF);
+        roundedFill(x, y, w, h, 3, 0x358CBEFF);
+        roundedFill(x + 1, y + 1, w - 2, h - 2, 2, (a << 24) | 0x0A1A44);
     }
 
     private static void roundedFill(int x, int y, int w, int h, int r, int color) {

@@ -34,18 +34,27 @@ public final class FrostHud {
         Models.Qol q = st.qol;
         Font font = mc.font;
 
+        // Auto layout: widgets stack down the left edge without overlapping, keystrokes sit bottom right.
+        int cy = 6;
+        int gw = mc.getWindow().getGuiScaledWidth();
+        int gh = mc.getWindow().getGuiScaledHeight();
         for (Models.Widget w : st.hud.widgets) {
             if (!w.enabled) continue;
             if (w.kind.equals("coordinates") && !q.show_coordinates && !q.show_biome) continue;
+            boolean keys = w.kind.equals("keystrokes");
+            float sc = Math.max(0.7f, Math.min(1.6f, w.scale));
+            int px = keys ? gw - Math.round(70 * sc) : 6;
+            int py = keys ? gh - Math.round(66 * sc) : cy;
             g.pose().pushMatrix();
-            g.pose().translate(w.pos[0], w.pos[1]);
-            g.pose().scale(w.scale, w.scale);
+            g.pose().translate(px, py);
+            g.pose().scale(sc, sc);
             lastW = 0;
             lastH = 0;
             draw(g, font, mc, w, s, q);
-            if (w.kind.equals("keystrokes")) { lastW = 66; lastH = 58; }
+            if (keys) { lastW = 66; lastH = 58; }
             g.pose().popMatrix();
-            st.bounds.put(w.kind, new int[] {Math.round(w.pos[0]), Math.round(w.pos[1]), Math.round(lastW * w.scale), Math.round(lastH * w.scale)});
+            st.bounds.put(w.kind, new int[] {px, py, Math.round(lastW * sc), Math.round(lastH * sc)});
+            if (!keys) cy += Math.round(lastH * sc) + 5;
         }
         if (System.currentTimeMillis() < st.noticeUntil && !st.notice.isEmpty()) {
             int nw = font.width(st.notice) + 16;
@@ -164,20 +173,13 @@ public final class FrostHud {
         g.drawString(font, label, x + (w - font.width(label)) / 2, y + (h - font.lineHeight) / 2 + 1, labelColor);
     }
 
-    /**
-     * Glass panel like the launcher's CSS cards: translucent navy body, 1px ice border, soft glow,
-     * a lighter upper half (the "backdrop" sheen) and rounded corners.
-     */
+    /** Flat launcher-style card: navy body, 1px ice border (rgba(140,190,255,.2)), small corner radius. */
     private static void panel(GuiGraphics g, int x, int y, int w, int h, int tint) {
         lastW = w;
         lastH = h;
         int a = (tint >>> 24) & 0xFF;
-        roundedFill(g, x - 1, y, w + 2, h + 2, 5, 0x20000000);            // outer glow / shadow
-        roundedFill(g, x, y + 1, w, h, 5, 0x40000000);                    // drop shadow
-        roundedFill(g, x, y, w, h, 5, 0x468CBEFF);                        // 1px border (rgba(140,190,255,.28))
-        roundedFill(g, x + 1, y + 1, w - 2, h - 2, 4, (a << 24) | 0x0A1A44);   // body
-        g.fill(x + 3, y + 1, x + w - 3, y + 1 + Math.max(2, (h - 2) / 2), 0x14BFE6FF);   // upper sheen
-        g.fill(x + 4, y + 1, x + w - 4, y + 2, 0x50DCF0FF);               // glossy top edge
+        roundedFill(g, x, y, w, h, 3, 0x358CBEFF);                       // border
+        roundedFill(g, x + 1, y + 1, w - 2, h - 2, 2, (a << 24) | 0x0A1A44);   // body
     }
 
     /** 5x5 pixel snowflake, drawn with fills so it does not depend on font glyphs. */
