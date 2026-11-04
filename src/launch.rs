@@ -166,6 +166,10 @@ pub async fn prepare(
     // --- natives -------------------------------------------------------------------------------
     extract_natives(native_jars, natives_dir.clone()).await?;
 
+    if settings.auto_optimize {
+        let _ = crate::optimize::apply(&game_dir, version_id);
+    }
+
     // --- arguments -----------------------------------------------------------------------------
     classpath.push(client_jar);
     let classpath_str = classpath

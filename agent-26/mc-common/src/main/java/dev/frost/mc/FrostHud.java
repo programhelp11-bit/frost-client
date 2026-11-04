@@ -51,14 +51,14 @@ public final class FrostHud {
             int nw = font.width(st.notice) + 16;
             int nx = (mc.getWindow().getGuiScaledWidth() - nw) / 2;
             g.pose().pushMatrix();
-            panel(g, nx, 24, nw, 18, 0xC00E204E);
+            panel(g, nx, 24, nw, 18, 0xD00A1A44);
             g.text(font, st.notice, nx + 9, 29, TEXT, false);
             g.pose().popMatrix();
         }
     }
 
     private static void draw(GuiGraphicsExtractor g, Font font, Minecraft mc, Models.Widget w, Models.Stats s, Models.Qol q) {
-        int tint = (Math.max(20, Math.min(240, w.opacity)) << 24) | 0x0E204E;
+        int tint = (Math.max(110, Math.min(235, w.opacity + 60)) << 24) | 0x0A1A44;
         switch (w.kind) {
             case "keystrokes" -> keystrokes(g, font, s.keys, tint);
             case "armor_status" -> armor(g, font, mc, tint);
@@ -103,11 +103,11 @@ public final class FrostHud {
                 int width = 0;
                 for (String[] r : rows) width = Math.max(width, font.width(r[0]) + 8 + font.width(r[1]));
                 int h = rows.size() * (font.lineHeight + 3) + 5;
-                panel(g, 0, 0, width + 22, h, tint);
+                panel(g, 0, 0, width + 18, h + 2, tint);
                 int y = 5;
                 for (String[] r : rows) {
-                    g.text(font, r[0], 9, y, DIM, false);
-                    g.text(font, r[1], 9 + font.width(r[0]) + 8, y, TEXT, false);
+                    g.text(font, r[0], 8, y + 1, ACCENT, false);
+                    g.text(font, r[1], 8 + font.width(r[0]) + 8, y + 1, TEXT, false);
                     y += font.lineHeight + 3;
                 }
             }
@@ -156,24 +156,28 @@ public final class FrostHud {
     }
 
     private static void key(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, String label, boolean down) {
-        roundedFill(g, x, y + 1, w, h, 2, 0x50000000);
-        roundedFill(g, x, y, w, h, 2, down ? 0xE08FD3FF : 0xA0122A5C);
-        if (!down) g.fill(x + 2, y, x + w - 2, y + 1, 0x40BFE6FF);
+        roundedFill(g, x, y + 1, w, h, 3, 0x48000000);
+        roundedFill(g, x, y, w, h, 3, down ? 0xF08FD3FF : 0x468CBEFF);
+        roundedFill(g, x + 1, y + 1, w - 2, h - 2, 2, down ? 0xF0A9E0FF : 0xC00E1F4A);
+        if (!down) g.fill(x + 2, y + 1, x + w - 2, y + 2, 0x40BFE6FF);
         int labelColor = down ? 0xFF0B1B3A : TEXT;
         g.text(font, label, x + (w - font.width(label)) / 2, y + (h - font.lineHeight) / 2 + 1, labelColor, false);
     }
 
-    /** Frost panel: soft shadow, rounded body, glossy top edge, accent bar and a tiny snowflake. */
+    /**
+     * Glass panel like the launcher's CSS cards: translucent navy body, 1px ice border, soft glow,
+     * a lighter upper half (the "backdrop" sheen) and rounded corners.
+     */
     private static void panel(GuiGraphicsExtractor g, int x, int y, int w, int h, int tint) {
         lastW = w;
         lastH = h;
-        roundedFill(g, x, y + 1, w, h, 3, 0x48000000);              // drop shadow
-        roundedFill(g, x, y, w, h, 3, tint);                         // body
-        g.fill(x + 2, y + 1, x + w - 2, y + 3, 0x16FFFFFF);          // gloss on the top edge
-        g.fill(x + 3, y, x + w - 3, y + 1, 0x70BFE6FF);              // bright top line
-        g.fill(x + 3, y + h - 1, x + w - 3, y + h, 0x40000000);      // darker bottom line
-        g.fill(x + 3, y + 4, x + 5, y + h - 4, ACCENT);              // accent bar
-        if (w >= 34) snowflake(g, x + w - 9, y + 3);
+        int a = (tint >>> 24) & 0xFF;
+        roundedFill(g, x - 1, y, w + 2, h + 2, 5, 0x20000000);            // outer glow / shadow
+        roundedFill(g, x, y + 1, w, h, 5, 0x40000000);                    // drop shadow
+        roundedFill(g, x, y, w, h, 5, 0x468CBEFF);                        // 1px border (rgba(140,190,255,.28))
+        roundedFill(g, x + 1, y + 1, w - 2, h - 2, 4, (a << 24) | 0x0A1A44);   // body
+        g.fill(x + 3, y + 1, x + w - 3, y + 1 + Math.max(2, (h - 2) / 2), 0x14BFE6FF);   // upper sheen
+        g.fill(x + 4, y + 1, x + w - 4, y + 2, 0x50DCF0FF);               // glossy top edge
     }
 
     /** 5x5 pixel snowflake, drawn with fills so it does not depend on font glyphs. */

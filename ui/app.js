@@ -311,6 +311,7 @@ function pageSettings() {
   const T = S.settingsTab;
   if (T === 'launcher') {
     body = `<div class="set-sec">GENERAL</div>
+      ${setRow('Auto FPS boost', 'Before each launch: fast graphics, lower render distance, no clouds/shadows/vsync. Works without any mods.', tog('auto_optimize', c.auto_optimize !== false))}
       ${setRow('Falling snow', 'Little snowflakes drifting over the launcher.', tog('snow', c.snow))}
       ${setRow('While playing', 'What the launcher window does once the game is running.', `<select class="field" data-bind="while">${[['keep', 'Keep visible'], ['hide', 'Hide launcher']].map(([v, l]) => `<option value="${v}" ${c.while_playing === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}`;
   } else if (T === 'java') {

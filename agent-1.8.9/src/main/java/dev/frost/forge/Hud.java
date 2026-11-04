@@ -48,7 +48,7 @@ public final class Hud {
     }
 
     private static void draw(Minecraft mc, FontRenderer font, Models.Widget w, Models.Stats s, Models.Qol q) {
-        int tint = (Math.max(20, Math.min(240, w.opacity)) << 24) | 0x0E204E;
+        int tint = (Math.max(110, Math.min(235, w.opacity + 60)) << 24) | 0x0A1A44;
         if (w.kind.equals("keystrokes")) {
             keystrokes(font, s.keys);
             return;
@@ -90,11 +90,11 @@ public final class Hud {
         int width = 0;
         for (String[] r : rows) width = Math.max(width, font.getStringWidth(r[0]) + 8 + font.getStringWidth(r[1]));
         int h = rows.size() * (font.FONT_HEIGHT + 3) + 5;
-        panel(0, 0, width + 22, h, tint);
+        panel(0, 0, width + 18, h + 2, tint);
         int y = 5;
         for (String[] r : rows) {
-            font.drawStringWithShadow(r[0], 9, y, DIM);
-            font.drawStringWithShadow(r[1], 9 + font.getStringWidth(r[0]) + 8, y, TEXT);
+            font.drawStringWithShadow(r[0], 8, y + 1, 0xFF8FD3FF);
+            font.drawStringWithShadow(r[1], 8 + font.getStringWidth(r[0]) + 8, y + 1, TEXT);
             y += font.FONT_HEIGHT + 3;
         }
     }
@@ -132,9 +132,10 @@ public final class Hud {
     }
 
     private static void key(FontRenderer font, int x, int y, int w, int h, String label, boolean down) {
-        roundedFill(x, y + 1, w, h, 2, 0x50000000);
-        roundedFill(x, y, w, h, 2, down ? 0xE08FD3FF : 0xA0122A5C);
-        if (!down) Gui.drawRect(x + 2, y, x + w - 2, y + 1, 0x40BFE6FF);
+        roundedFill(x, y + 1, w, h, 3, 0x48000000);
+        roundedFill(x, y, w, h, 3, down ? 0xF08FD3FF : 0x468CBEFF);
+        roundedFill(x + 1, y + 1, w - 2, h - 2, 2, down ? 0xF0A9E0FF : 0xC00E1F4A);
+        if (!down) Gui.drawRect(x + 2, y + 1, x + w - 2, y + 2, 0x40BFE6FF);
         int labelColor = down ? 0xFF0B1B3A : TEXT;
         font.drawStringWithShadow(label, x + (w - font.getStringWidth(label)) / 2, y + (h - font.FONT_HEIGHT) / 2 + 1, labelColor);
     }
@@ -142,13 +143,13 @@ public final class Hud {
     private static void panel(int x, int y, int w, int h, int tint) {
         lastW = w;
         lastH = h;
-        roundedFill(x, y + 1, w, h, 3, 0x48000000);
-        roundedFill(x, y, w, h, 3, tint);
-        Gui.drawRect(x + 2, y + 1, x + w - 2, y + 3, 0x16FFFFFF);
-        Gui.drawRect(x + 3, y, x + w - 3, y + 1, 0x70BFE6FF);
-        Gui.drawRect(x + 3, y + h - 1, x + w - 3, y + h, 0x40000000);
-        Gui.drawRect(x + 3, y + 4, x + 5, y + h - 4, 0xFF8FD3FF);
-        if (w >= 34) snowflake(x + w - 9, y + 3);
+        int a = (tint >>> 24) & 0xFF;
+        roundedFill(x - 1, y, w + 2, h + 2, 5, 0x20000000);
+        roundedFill(x, y + 1, w, h, 5, 0x40000000);
+        roundedFill(x, y, w, h, 5, 0x468CBEFF);
+        roundedFill(x + 1, y + 1, w - 2, h - 2, 4, (a << 24) | 0x0A1A44);
+        Gui.drawRect(x + 3, y + 1, x + w - 3, y + 1 + Math.max(2, (h - 2) / 2), 0x14BFE6FF);
+        Gui.drawRect(x + 4, y + 1, x + w - 4, y + 2, 0x50DCF0FF);
     }
 
     private static void roundedFill(int x, int y, int w, int h, int r, int color) {

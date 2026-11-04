@@ -59,6 +59,8 @@ pub struct Settings {
     pub while_playing: String,
     /// Falling snowflakes in the launcher background.
     pub snow: bool,
+    /// Rewrite performance keys in options.txt before every launch (mod-free FPS boost).
+    pub auto_optimize: bool,
 }
 
 impl Default for Settings {
@@ -76,6 +78,7 @@ impl Default for Settings {
             last_played: HashMap::new(),
             while_playing: "keep".into(),
             snow: true,
+            auto_optimize: true,
         }
     }
 }

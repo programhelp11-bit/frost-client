@@ -22,5 +22,6 @@ pub mod ipc;
 pub mod java;
 pub mod launch;
 pub mod library;
+pub mod optimize;
 pub mod trainer;
 pub mod versions;
