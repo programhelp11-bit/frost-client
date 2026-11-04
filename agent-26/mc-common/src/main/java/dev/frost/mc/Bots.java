@@ -2,6 +2,7 @@ package dev.frost.mc;
 
 import com.google.gson.JsonObject;
 import com.mojang.authlib.GameProfile;
+import dev.frost.core.BotBrain;
 import dev.frost.core.Combat;
 import dev.frost.core.Dispatcher;
 import dev.frost.core.FrostState;
@@ -40,6 +41,8 @@ public final class Bots {
         RemotePlayer entity;
         Models.BotConfig cfg;
         Vec3 velocity = Vec3.ZERO;
+        BotBrain brain;
+        long lastNanos;
         float hp = 20f;
         int invul;      // ticks of damage immunity after being hit
         int respawnIn = -1;
@@ -151,6 +154,7 @@ public final class Bots {
         Bot bot = new Bot();
         bot.entity = e;
         bot.cfg = cfg;
+        bot.brain = new BotBrain(cfg, 0x9E3779B97F4A7C15L ^ cfg.id ^ System.nanoTime());
         BOTS.put(cfg.id, bot);
     }
 
@@ -182,28 +186,22 @@ public final class Bots {
             if (bot.entity.tickCount % 20 == 0) nameTag(bot);
         }
 
-        // 1) tell the Rust brain what the bot sees
-        if (FrostMc.link() != null && FrostMc.link().connected()) {
-            Models.Obs obs = new Models.Obs();
-            obs.bot_pos = new Models.Vec3(e.getX(), e.getY(), e.getZ());
-            obs.bot_yaw = e.getYRot();
-            obs.bot_pitch = e.getXRot();
-            obs.on_ground = e.onGround();
-            obs.bot_health = bot.hp;
-            Vec3 pm = player.getDeltaMovement();
-            obs.target_pos = new Models.Vec3(player.getX(), player.getY(), player.getZ());
-            obs.target_vel = new Models.Vec3(pm.x, pm.y, pm.z);
-            obs.target_blocking = player.isBlocking();
-            obs.target_health = player.getHealth();
-            JsonObject msg = new JsonObject();
-            msg.addProperty("type", "bot_obs");
-            msg.addProperty("id", bot.cfg.id);
-            msg.add("obs", Dispatcher.gson().toJsonTree(obs));
-            FrostMc.link().send(msg);
-        }
+        // 1) the brain runs right here: observe, decide
+        Models.Obs obs = new Models.Obs();
+        obs.bot_pos = new Models.Vec3(e.getX(), e.getY(), e.getZ());
+        obs.bot_yaw = e.getYRot();
+        obs.bot_pitch = e.getXRot();
+        obs.on_ground = e.onGround();
+        obs.bot_health = bot.hp;
+        Vec3 pm = player.getDeltaMovement();
+        obs.target_pos = new Models.Vec3(player.getX(), player.getY(), player.getZ());
+        obs.target_vel = new Models.Vec3(pm.x, pm.y, pm.z);
+        obs.target_blocking = player.isBlocking();
+        obs.target_health = player.getHealth();
+        obs.dt = 0.05f;
+        Models.BotCommand c = bot.brain.tick(obs);
 
-        // 2) apply the newest command
-        Models.BotCommand c = st.botCommands.get(bot.cfg.id);
+        // 2) apply the command
         double ix = 0;
         double iz = 0;
         if (c != null) {

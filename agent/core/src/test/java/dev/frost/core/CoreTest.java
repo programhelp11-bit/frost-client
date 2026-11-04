@@ -184,4 +184,43 @@ class CoreTest {
         assertEquals(0f, Combat.hurt(1f, 5f));
         assertTrue(Combat.weaponDamage("axe_shield", false) > Combat.weaponDamage("sword", false));
     }
+
+    private static Models.Obs obsAt(double dist) {
+        Models.Obs o = new Models.Obs();
+        o.bot_pos = new Models.Vec3(0, 0, 0);
+        o.target_pos = new Models.Vec3(0, 0, dist);
+        o.on_ground = true;
+        o.dt = 0.05f;
+        return o;
+    }
+
+    @Test
+    void brainApproachesAndAttacks() {
+        Models.BotConfig c = new Models.BotConfig();
+        c.difficulty = 1f;
+        c.legacy_combat = true;
+        BotBrain b = new BotBrain(c, 7);
+        Models.BotCommand far = b.tick(obsAt(8));
+        assertTrue(far.forward && far.sprint, "must run at a distant player");
+        boolean attacked = false;
+        for (int i = 0; i < 40 && !attacked; i++) attacked = b.tick(obsAt(2.0)).attack;
+        assertTrue(attacked, "must hit a player in reach");
+        for (int i = 0; i < 80; i++) assertFalse(b.tick(obsAt(5.0)).attack, "never hits out of reach");
+    }
+
+    @Test
+    void brainLearnsToSwitchPlans() {
+        Models.BotConfig c = new Models.BotConfig();
+        c.difficulty = 1f;
+        BotBrain b = new BotBrain(c, 3);
+        java.util.Set<Integer> seen = new java.util.HashSet<Integer>();
+        Models.Obs o = obsAt(2.5);
+        for (int i = 0; i < 2400; i++) {
+            if (i % 60 == 0) o.target_health = Math.max(1f, o.target_health - 0.5f);
+            if (o.target_health <= 1f) o.target_health = 20f;
+            b.tick(o);
+            seen.add(b.currentArm());
+        }
+        assertTrue(seen.size() >= 2, "should explore several plans");
+    }
 }

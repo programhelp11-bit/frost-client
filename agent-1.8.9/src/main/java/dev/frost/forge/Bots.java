@@ -2,6 +2,7 @@ package dev.frost.forge;
 
 import com.google.gson.JsonObject;
 import com.mojang.authlib.GameProfile;
+import dev.frost.core.BotBrain;
 import dev.frost.core.Combat;
 import dev.frost.core.Dispatcher;
 import dev.frost.core.FrostState;
@@ -31,6 +32,7 @@ public final class Bots {
         EntityOtherPlayerMP entity;
         Models.BotConfig cfg;
         double vx, vy, vz;
+        BotBrain brain;
         float hp = 20f;
         int invul;
         int respawnIn = -1;
@@ -130,6 +132,7 @@ public final class Bots {
         Bot bot = new Bot();
         bot.entity = e;
         bot.cfg = cfg;
+        bot.brain = new BotBrain(cfg, 0x9E3779B97F4A7C15L ^ cfg.id ^ System.nanoTime());
         BOTS.put(cfg.id, bot);
     }
 
@@ -156,25 +159,19 @@ public final class Bots {
             if (e.ticksExisted % 20 == 0) nameTag(bot);
         }
 
-        if (FrostForge.link() != null && FrostForge.link().connected()) {
-            Models.Obs obs = new Models.Obs();
-            obs.bot_pos = new Models.Vec3(e.posX, e.posY, e.posZ);
-            obs.bot_yaw = e.rotationYaw;
-            obs.bot_pitch = e.rotationPitch;
-            obs.on_ground = e.onGround;
-            obs.bot_health = bot.hp;
-            obs.target_pos = new Models.Vec3(player.posX, player.posY, player.posZ);
-            obs.target_vel = new Models.Vec3(player.motionX, player.motionY, player.motionZ);
-            obs.target_blocking = player.isBlocking();
-            obs.target_health = player.getHealth();
-            JsonObject msg = new JsonObject();
-            msg.addProperty("type", "bot_obs");
-            msg.addProperty("id", bot.cfg.id);
-            msg.add("obs", Dispatcher.gson().toJsonTree(obs));
-            FrostForge.link().send(msg);
-        }
+        Models.Obs obs = new Models.Obs();
+        obs.bot_pos = new Models.Vec3(e.posX, e.posY, e.posZ);
+        obs.bot_yaw = e.rotationYaw;
+        obs.bot_pitch = e.rotationPitch;
+        obs.on_ground = e.onGround;
+        obs.bot_health = bot.hp;
+        obs.target_pos = new Models.Vec3(player.posX, player.posY, player.posZ);
+        obs.target_vel = new Models.Vec3(player.motionX, player.motionY, player.motionZ);
+        obs.target_blocking = player.isBlocking();
+        obs.target_health = player.getHealth();
+        obs.dt = 0.05f;
+        Models.BotCommand c = bot.brain.tick(obs);
 
-        Models.BotCommand c = st.botCommands.get(bot.cfg.id);
         double ix = 0;
         double iz = 0;
         if (c != null) {

@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import dev.frost.core.Dispatcher;
 import dev.frost.core.FrostLink;
 import dev.frost.core.FrostState;
+import dev.frost.core.Models;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 
@@ -19,6 +20,7 @@ public final class FrostMc {
     private static boolean lastCapesKey;
 
     /** Bridges the shared menu to the launcher link. */
+    private static final java.util.concurrent.atomic.AtomicInteger BOT_IDS = new java.util.concurrent.atomic.AtomicInteger();
     public static final dev.frost.core.Menu.Host HOST = new dev.frost.core.Menu.Host() {
         public void settingsChanged() {
             if (link == null) return;
@@ -30,15 +32,16 @@ public final class FrostMc {
         }
 
         public void requestBot(String style, float difficulty, String arena, boolean kit) {
-            if (link == null) return;
-            JsonObject m = new JsonObject();
-            m.addProperty("type", "request_bot");
-            m.addProperty("style", style);
-            m.addProperty("difficulty", difficulty);
-            m.addProperty("legacy", FrostState.INSTANCE.kbProfile.legacy);
-            m.addProperty("arena", arena);
-            m.addProperty("kit", kit);
-            link.send(m);
+            // Bots are created right here, so they work even when the launcher link is down.
+            Models.BotConfig c = new Models.BotConfig();
+            c.id = BOT_IDS.incrementAndGet();
+            c.name = "Frost Bot";
+            c.style = style;
+            c.difficulty = Math.max(0.1f, Math.min(1f, difficulty));
+            c.legacy_combat = FrostState.INSTANCE.kbProfile.legacy;
+            c.arena = arena == null ? "none" : arena;
+            c.kit = kit;
+            FrostState.INSTANCE.spawnQueue.add(c);
         }
 
         public void clearBots() {
