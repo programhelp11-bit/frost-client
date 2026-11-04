@@ -32,6 +32,8 @@ pub enum ToGame {
     /// Short message shown on the in-game HUD.
     Notice { text: String },
     Library { skins: Vec<LibEntry>, capes: Vec<LibEntry>, active_cape: String },
+    /// PNG of the custom cape the player wears (None = built-in Frost cape / no cape).
+    OwnCape { png_b64: Option<String> },
 }
 
 /// One slot of a radial menu.

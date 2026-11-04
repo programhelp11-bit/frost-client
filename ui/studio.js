@@ -228,7 +228,7 @@ function libItems(kinds) {
       <canvas width="${i.kind === 'skin' ? 32 : 20}" height="32" data-thumb="${i.id}" data-kind="${i.kind}"></canvas>
       <div class="nm"><b>${esc(i.name)}</b><small>${i.kind === 'skin' ? (i.slim ? 'Slim' : 'Classic') + ' skin' : i.kind === 'fav' ? 'Cape' : 'Cape'}</small></div>
       <div class="acts">
-        ${i.kind === 'skin' ? `<button class="btn ghost sm" data-act="st-lib-apply" data-id="${i.id}">Wear</button>` : ''}
+        ${i.kind === 'skin' ? `<button class="btn ghost sm" data-act="st-lib-apply" data-id="${i.id}">Wear</button>` : `<button class="btn ghost sm" data-act="ct-wear-lib" data-id="${i.id}">Wear</button>`}
         ${i.kind !== 'fav' ? `<button class="btn ghost sm" data-act="st-lib-edit" data-id="${i.id}" data-kind="${i.kind}">Edit</button>` : ''}
         <button class="btn ghost sm danger" data-act="st-lib-del" data-id="${i.id}">✕</button>
       </div></div>`).join('');
@@ -259,6 +259,30 @@ function pageSkinEditor() {
       <div class="line"><button class="btn ghost" data-act="st-save-skin">Save to library</button><button class="btn" data-act="st-apply-skin">Wear this skin</button></div>
       <h3 style="margin-top:18px">Skin library <span class="tag">R in game</span></h3>
       <div class="lib" id="lib-skins">${libItems(['skin'])}</div>
+    </aside>
+  </div>`;
+}
+
+function pageCapeEditor() {
+  if (!S.st.account) return needAccount('Cape editor');
+  const ed = stu.cape;
+  return `<h1 class="page-title">Cape editor</h1><div class="page-sub">Draw the back of your cape. Save it to wear it right away: you see it in game, and other Frost Client players see it too when a Frost server is set up.</div>
+  <div class="studio">
+    <section class="card glass ed">
+      ${toolbar('cape')}
+      <div class="ed-wrap cape"><canvas id="ed-cape" width="${10 * SCALE.cape}" height="${16 * SCALE.cape}"></canvas></div>
+      <div class="line"><div class="seg"><button data-act="ct-preset" data-p="frost">Frost</button><button data-act="ct-preset" data-p="aurora">Aurora</button><button data-act="ct-preset" data-p="ember">Ember</button></div><div class="grow"></div>
+        <button class="btn ghost sm" data-act="st-import" data-ed="cape">Import PNG</button>
+        <button class="btn ghost sm" data-act="st-clear" data-ed="cape">Clear</button></div>
+    </section>
+    <aside class="card glass side">
+      <h3>Preview</h3>
+      <div class="pv"><canvas id="pv-cape" width="128" height="256"></canvas></div>
+      <input class="field" data-bind="st-name-cape" value="${esc(ed.name)}" maxlength="24" placeholder="Cape name (3-24 characters)">
+      <div class="line"><button class="btn ghost" data-act="st-save-cape">Save</button><button class="btn" data-act="ct-wear">Save &amp; wear</button></div>
+      
+      <h3 style="margin-top:18px">My capes</h3>
+      <div class="lib" id="lib-capes">${libItems(['cape'])}</div>
     </aside>
   </div>`;
 }
@@ -307,8 +331,8 @@ let stroke = null;
 
 function studioMount() {
   if (!S.st || !S.st.account) return;
-  if (S.page === 'skinedit') {
-    const kind = 'skin';
+  if (S.page === 'skinedit' || S.page === 'capeedit') {
+    const kind = S.page === 'skinedit' ? 'skin' : 'cape';
     const cv = document.getElementById('ed-' + kind);
     if (cv && !cv._wired) {
       cv._wired = true;
@@ -405,6 +429,25 @@ const STUDIO_ACTIONS = {
       await inv('upload_skin', { pngB64: skinB64(), slim: stu.skin.slim });
       toast('Skin updated on your account', 'ok');
     } catch (e) { toast(e, 'err'); }
+  },
+  'st-save-cape': async () => {
+    try {
+      await inv('lib_save', { kind: 'cape', name: stu.cape.name || 'My cape', pngB64: capeB64(), slim: false });
+      toast('Cape saved', 'ok'); await libLoad();
+    } catch (e) { toast(e, 'err'); }
+  },
+  'ct-preset': el => applyPreset(el.dataset.p),
+  'ct-wear': async () => {
+    try {
+      const id = await inv('lib_save', { kind: 'cape', name: stu.cape.name || 'My cape', pngB64: capeB64(), slim: false });
+      await inv('cape_select', { id: typeof id === 'string' ? id : (id && id.id) });
+      stu.gal.active = typeof id === 'string' ? id : (id && id.id);
+      toast('You are wearing your cape now', 'ok'); await libLoad();
+    } catch (e) { toast(e, 'err'); }
+  },
+  'ct-wear-lib': async el => {
+    try { await inv('cape_select', { id: el.dataset.id }); stu.gal.active = el.dataset.id; toast('Cape changed', 'ok'); renderView(); }
+    catch (e) { toast(e, 'err'); }
   },
   'st-lib-edit': async el => {
     try {

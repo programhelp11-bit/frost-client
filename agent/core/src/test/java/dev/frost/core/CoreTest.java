@@ -104,12 +104,13 @@ class CoreTest {
     }
 
     @Test
-    void menuDragMovesWidgetAndReportsChange() {
+    void menuTogglesReportChanges() {
         final int[] changed = {0};
+        final int[] spawned = {0};
         FrostState st = new FrostState();
         Menu.Host host = new Menu.Host() {
             public void settingsChanged() { changed[0]++; }
-            public void requestBot(String style, float d, String arena, boolean kit) { }
+            public void requestBot(String style, float d, String arena, boolean kit) { spawned[0]++; }
             public void clearBots() { }
             public boolean launcherConnected() { return false; }
         };
@@ -120,17 +121,23 @@ class CoreTest {
             public int width(String t) { return t.length() * 6; }
             public int lineHeight() { return 9; }
         };
-        st.bounds.put("fps", new int[] {200, 100, 50, 20});
-        for (Models.Widget w : st.hud.widgets) if (w.kind.equals("fps")) w.pos = new float[] {200f, 100f};
-        menu.render(canvas, 640, 360, 210, 110, false);
-        menu.render(canvas, 640, 360, 210, 110, true);   // press on the widget
-        menu.render(canvas, 640, 360, 250, 150, true);   // drag
-        menu.render(canvas, 640, 360, 250, 150, false);  // release
-        Models.Widget fps = null;
-        for (Models.Widget w : st.hud.widgets) if (w.kind.equals("fps")) fps = w;
-        assertEquals(240f, fps.pos[0]);
-        assertEquals(140f, fps.pos[1]);
-        assertEquals(1, changed[0]);
+        // sweep clicks over the whole screen on the HUD tab: some toggle must flip
+        menu.tab = Menu.Tab.HUD;
+        for (int y = 0; y < 360; y += 6) {
+            for (int x = 140; x < 640; x += 12) {
+                menu.render(canvas, 640, 360, x, y, false);
+                menu.render(canvas, 640, 360, x, y, true);
+            }
+        }
+        assertTrue(changed[0] > 0, "HUD controls should react to clicks");
+        menu.tab = Menu.Tab.TRAINER;
+        for (int y = 0; y < 360; y += 6) {
+            for (int x = 140; x < 640; x += 6) {
+                menu.render(canvas, 640, 360, x, y, false);
+                menu.render(canvas, 640, 360, x, y, true);
+            }
+        }
+        assertTrue(spawned[0] > 0, "Spawn bot button should work");
     }
 
     @Test

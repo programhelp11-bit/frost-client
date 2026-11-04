@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
+use std::collections::HashMap;
 use frost_client::auth::{self, Account, AccountStore};
 use frost_client::config::Settings;
 use frost_client::cosmetics::{self, FrostApi, SkinVariant};
@@ -39,6 +40,7 @@ struct AppState {
     api_cache: Mutex<Option<(FrostApi, String, std::time::Instant)>>,
     /// Cape the player currently wears (`frost`, `none` or a community id).
     active_cape: Mutex<String>,
+    uploaded_capes: Mutex<HashMap<String, String>>,
 }
 
 fn err<E: std::fmt::Display>(e: E) -> String {
@@ -351,15 +353,65 @@ fn push_library(st: &AppState) {
         .map(|i| entry(&i.id, &i.name, &i.color))
         .collect();
     let mut capes = vec![entry("frost", "Frost", "5AAFFF")];
-    capes.extend(
-        items
-            .iter()
-            .filter(|i| i.kind == "fav")
-            .map(|i| entry(i.ref_id.as_deref().unwrap_or_default(), &i.name, &i.color)),
-    );
+    capes.extend(items.iter().filter(|i| i.kind == "cape").map(|i| entry(&i.id, &i.name, &i.color)));
     capes.push(entry("none", "No cape", "6B7A99"));
     let active_cape = st.active_cape.lock().unwrap().clone();
     ipc.send(ToGame::Library { skins, capes, active_cape });
+    push_own_cape(st);
+}
+
+/// Send the PNG of the worn custom cape so the game can show it without any server.
+fn push_own_cape(st: &AppState) {
+    let Some(ipc) = &st.ipc else { return };
+    let id = st.active_cape.lock().unwrap().clone();
+    let png_b64 = if id == "frost" || id == "none" {
+        None
+    } else {
+        library::load_png(&id).ok().map(|b| base64::engine::general_purpose::STANDARD.encode(b))
+    };
+    ipc.send(ToGame::OwnCape { png_b64 });
+}
+
+/// Wear a cape: Frost cape, no cape, or one of your own. Works fully offline; when a Frost
+/// server is configured it is also shared so other Frost players can see it.
+async fn set_cape(st: &AppState, id: &str) -> String {
+    *st.active_cape.lock().unwrap() = id.to_owned();
+    push_library(st);
+    if let Ok(api) = api(st).await {
+        let server_id = if id == "frost" || id == "none" {
+            Some(id.to_owned())
+        } else {
+            let known = st.uploaded_capes.lock().unwrap().get(id).cloned();
+            match known {
+                Some(sid) => Some(sid),
+                None => {
+                    let item = library::get(id);
+                    let png = library::load_png(id).ok();
+                    match (item, png) {
+                        (Some(item), Some(png)) => {
+                            match api.upload_cape(item.name.trim(), png).await {
+                                Ok(sid) => {
+                                    st.uploaded_capes.lock().unwrap().insert(id.to_owned(), sid.clone());
+                                    Some(sid)
+                                }
+                                Err(_) => None,
+                            }
+                        }
+                        _ => None,
+                    }
+                }
+            }
+        };
+        if let Some(sid) = server_id {
+            if api.select_cape(&sid).await.is_err() {
+                forget_api(st);
+            }
+        }
+    }
+    match id {
+        "none" => "Cape removed".to_owned(),
+        _ => "Cape changed".to_owned(),
+    }
 }
 
 fn notice(st: &AppState, text: impl Into<String>) {
@@ -429,15 +481,7 @@ async fn community_upload(st: State<'_, AppState>, name: String, png_b64: String
 
 #[tauri::command]
 async fn cape_select(st: State<'_, AppState>, id: String) -> Result<(), String> {
-    // The Frost cape works without a server; with one, other Frost players also see the choice.
-    if let Ok(api) = api(&st).await {
-        if let Err(e) = api.select_cape(&id).await {
-            forget_api(&st);
-            eprintln!("cape sync failed: {e}");
-        }
-    }
-    *st.active_cape.lock().unwrap() = id;
-    push_library(&st);
+    set_cape(&st, &id).await;
     Ok(())
 }
 
@@ -474,23 +518,7 @@ async fn apply_skin_item(st: &AppState, id: &str) -> Result<String, String> {
 async fn handle_game_request(handle: &AppHandle, req: GameRequest) {
     let st = handle.state::<AppState>();
     let msg = match req {
-        GameRequest::Cape(id) => match api(&st).await {
-            Ok(api) => match api.select_cape(&id).await {
-                Ok(()) => {
-                    *st.active_cape.lock().unwrap() = id.clone();
-                    push_library(&st);
-                    match id.as_str() {
-                        "none" => "Cape removed".to_owned(),
-                        _ => "Cape changed".to_owned(),
-                    }
-                }
-                Err(e) => {
-                    forget_api(&st);
-                    format!("Cape change failed: {e:#}")
-                }
-            },
-            Err(e) => format!("Cape change failed: {e}"),
-        },
+        GameRequest::Cape(id) => set_cape(&st, &id).await,
         GameRequest::Skin(id) => match apply_skin_item(&st, &id).await {
             Ok(name) => format!("Skin applied: {name}"),
             Err(e) => format!("Skin change failed: {e}"),
@@ -689,6 +717,7 @@ fn main() {
                 running: AtomicBool::new(false),
                 api_cache: Mutex::new(None),
                 active_cape: Mutex::new("frost".to_owned()),
+                uploaded_capes: Mutex::new(HashMap::new()),
             });
             spawn_cosmetics_sync(app.handle().clone());
 

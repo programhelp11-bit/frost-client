@@ -24,10 +24,23 @@ public final class CapeSkins {
             if (mc.player != null && mc.player.getUUID().toString().replace("-", "").equals(uuidNoDashes)) {
                 // Own cape: bundled with the mod, so it works without any server.
                 if ("none".equals(FrostState.INSTANCE.library.active_cape)) return base;
-                ClientAsset.Texture own = TEXTURES.get("own");
+                byte[] custom = FrostState.INSTANCE.ownCapePng;
+                String ownKey = custom == null ? "own" : "own" + Integer.toHexString(java.util.Arrays.hashCode(custom));
+                ClientAsset.Texture own = TEXTURES.get(ownKey);
                 if (own == null) {
-                    own = new ClientAsset.ResourceTexture(ResourceLocation.fromNamespaceAndPath("frost_client", "cape/frost"));
-                    TEXTURES.put("own", own);
+                    try {
+                        if (custom == null) {
+                            own = new ClientAsset.ResourceTexture(ResourceLocation.fromNamespaceAndPath("frost_client", "cape/frost"));
+                        } else {
+                            NativeImage img = NativeImage.read(custom);
+                            ResourceLocation id = ResourceLocation.fromNamespaceAndPath("frost_client", "cape/" + ownKey);
+                            Minecraft.getInstance().getTextureManager().register(id, new DynamicTexture(() -> "frost_cape_" + ownKey, img));
+                            own = new ClientAsset.ResourceTexture(id);
+                        }
+                        TEXTURES.put(ownKey, own);
+                    } catch (Exception ex) {
+                        return base;
+                    }
                 }
                 return new PlayerSkin(base.body(), own, base.elytra(), base.model(), base.secure());
             }

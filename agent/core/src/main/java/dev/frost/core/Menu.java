@@ -32,24 +32,26 @@ public final class Menu {
         boolean launcherConnected();
     }
 
-    public enum Tab { HUD, TRAINER, QUALITY }
+    public enum Tab { HUD, TRAINER, GAMEPLAY, PERFORMANCE }
 
-    static final int BG = 0xCC0A1838;
-    static final int PANEL = 0xD90E204E;
-    static final int BORDER = 0xAA6EAAFF;
-    static final int HOVER = 0x553D6BFF;
-    static final int ACTIVE = 0xB43D6BFF;
+    // launcher palette
     static final int TEXT = 0xFFEAF2FF;
-    static final int DIM = 0xFFA0AFC8;
+    static final int DIM = 0xFF8FA6C8;
     static final int ACCENT = 0xFF8FD3FF;
+    static final int BLUE = 0xFF3D6BFF;
+    static final int LINE = 0x388CBEFF;
+    static final int CARD = 0x2A12285A;
+    static final int HOVER = 0x2E3D6BFF;
 
     public static final String[] STYLES = {"sword", "crystal", "axe_shield", "mace", "bedwars_rush"};
     public static final String[] STYLE_NAMES = {"Sword", "Crystal", "Axe & Shield", "Mace", "Bedwars rush"};
 
+    private static final int ROW_H = 30;
+    private static final int ROW_GAP = 4;
+
     private final Host host;
     private final FrostState state;
-    public Tab tab = Tab.HUD;
-    public String selected = "cps";
+    public Tab tab = Tab.TRAINER;
     public int styleIdx;
     public int arenaIdx;
     public boolean kit;
@@ -58,12 +60,12 @@ public final class Menu {
 
     private boolean wasDown;
     private boolean clicked;
-    private boolean released;
     private int mx;
     private int my;
-    private String dragging;
-    private int dragDx;
-    private int dragDy;
+    private int scroll;
+
+    // per-frame row layout
+    private int cx, cw, rowY, curY, rowBottom, rowIdx, shown, total;
 
     public Menu(Host host, FrostState state) {
         this.host = host;
@@ -94,22 +96,78 @@ public final class Menu {
         mx = mouseX;
         my = mouseY;
         clicked = down && !wasDown;
-        released = !down && wasDown;
         wasDown = down;
 
-        c.fill(0, 0, sw, sh, 0x59050C20);
-        dock(c, sw);
+        c.fill(0, 0, sw, sh, 0x8C040A1C);
+        int w = Math.min(sw - 24, 620);
+        int h = Math.min(sh - 24, 340);
+        int x = (sw - w) / 2;
+        int y = (sh - h) / 2;
+        int sb = 132;
+        card(c, x, y, w, h, 0xF4070F26, 0x4A8CBEFF);
+        c.fill(x + 1, y + 1, x + sb, y + h - 1, 0xFF050B1E);
+        c.fill(x + sb, y + 1, x + sb + 1, y + h - 1, LINE);
+
+        // brand
+        snowflake(c, x + 14, y + 14, ACCENT);
+        c.text("F R O S T", x + 28, y + 12, TEXT);
+
+        // navigation
+        String[] names = {"HUD", "Trainer", "Gameplay", "Performance"};
+        Tab[] tabs = {Tab.HUD, Tab.TRAINER, Tab.GAMEPLAY, Tab.PERFORMANCE};
+        for (int i = 0; i < tabs.length; i++) {
+            int ny = y + 40 + i * 26;
+            boolean on = tab == tabs[i];
+            boolean hov = over(x + 8, ny, sb - 16, 22);
+            if (on) {
+                c.fill(x + 8, ny, x + sb - 8, ny + 22, 0x335B86FF);
+                c.fill(x + 8, ny + 3, x + 10, ny + 19, 0xFF5B86FF);
+            } else if (hov) {
+                c.fill(x + 8, ny, x + sb - 8, ny + 22, 0x1A8CBEFF);
+            }
+            c.text(names[i], x + 20, ny + 7, on ? TEXT : DIM);
+            if (hov && clicked && !on) {
+                tab = tabs[i];
+                scroll = 0;
+            }
+        }
+        c.text("Esc to close", x + 14, y + h - 18, DIM);
+
+        // content
+        cx = x + sb + 16;
+        cw = w - sb - 32;
+        String title = tab == Tab.HUD ? "HUD" : tab == Tab.TRAINER ? "Trainer" : tab == Tab.GAMEPLAY ? "Gameplay" : "Performance";
+        c.text(title, cx, y + 14, TEXT);
+        c.text(title, cx + 1, y + 14, TEXT);
+        String sub = tab == Tab.HUD ? "Choose what is shown on screen."
+            : tab == Tab.TRAINER ? "Practice against bots. Singleplayer only."
+            : tab == Tab.GAMEPLAY ? "Quality of life while you play."
+            : "Squeeze out more frames.";
+        c.text(sub, cx, y + 27, DIM);
+
+        rowY = y + 46;
+        rowBottom = y + h - 34;
+        rowIdx = 0;
+        shown = 0;
         switch (tab) {
-            case HUD: hudTab(c, sw, sh); break;
-            case TRAINER: trainerTab(c, sw, sh); break;
-            default: qualityTab(c, sw, sh); break;
+            case HUD: hudTab(c); break;
+            case TRAINER: trainerTab(c); break;
+            case GAMEPLAY: gameplayTab(c); break;
+            default: performanceTab(c); break;
+        }
+        total = rowIdx;
+        int maxScroll = Math.max(0, total - shown - (scroll > 0 ? 0 : 0));
+        if (scroll > 0 || shown < total) {
+            int by = y + h - 26;
+            c.text((scroll + 1) + "-" + (scroll + shown) + " of " + total, x + w - 150, by + 4, DIM);
+            if (smallButton(c, x + w - 62, by, 22, 16, "^") && scroll > 0) scroll--;
+            if (smallButton(c, x + w - 36, by, 22, 16, "v") && scroll + shown < total) scroll++;
         }
         if (!message.isEmpty()) {
-            int w = c.width(message) + 16;
-            panel(c, (sw - w) / 2, sh - 44, w, 18);
-            c.text(message, (sw - w) / 2 + 8, sh - 40, ACCENT);
+            int mw = c.width(message) + 18;
+            card(c, (sw - mw) / 2, y + h + 4 > sh - 24 ? sh - 24 : y + h + 4, mw, 18, 0xF0070F26, 0x4A8CBEFF);
+            c.text(message, (sw - mw) / 2 + 9, (y + h + 4 > sh - 24 ? sh - 24 : y + h + 4) + 5, ACCENT);
         }
-        if (released) dragging = null;
     }
 
     // ---------------------------------------------------------------- pieces
@@ -118,16 +176,12 @@ public final class Menu {
         return mx >= x && mx < x + w && my >= y && my < y + h;
     }
 
-    private void panel(Canvas c, int x, int y, int w, int h) {
-        c.fill(x, y, x + w, y + h, PANEL);
-        border(c, x, y, w, h, BORDER);
-    }
-
-    private void border(Canvas c, int x, int y, int w, int h, int col) {
-        c.fill(x, y, x + w, y + 1, col);
-        c.fill(x, y + h - 1, x + w, y + h, col);
-        c.fill(x, y + 1, x + 1, y + h - 1, col);
-        c.fill(x + w - 1, y + 1, x + w, y + h - 1, col);
+    private void card(Canvas c, int x, int y, int w, int h, int body, int border) {
+        c.fill(x, y, x + w, y + h, body);
+        c.fill(x, y, x + w, y + 1, border);
+        c.fill(x, y + h - 1, x + w, y + h, border);
+        c.fill(x, y + 1, x + 1, y + h - 1, border);
+        c.fill(x + w - 1, y + 1, x + w, y + h - 1, border);
     }
 
     static void snowflake(Canvas c, int x, int y, int col) {
@@ -135,217 +189,184 @@ public final class Menu {
         for (int[] p : px) c.fill(x + p[0], y + p[1], x + p[0] + 1, y + p[1] + 1, col);
     }
 
-    /** Flat button; returns true on the frame it was clicked. */
-    private boolean button(Canvas c, int x, int y, int w, int h, String label, boolean active) {
+    private boolean smallButton(Canvas c, int x, int y, int w, int h, String label) {
         boolean hov = over(x, y, w, h);
-        c.fill(x, y, x + w, y + h, active ? ACTIVE : (hov ? HOVER : 0x660E204E));
-        border(c, x, y, w, h, active ? 0xFFBFE6FF : 0x886EAAFF);
+        card(c, x, y, w, h, hov ? 0x553D6BFF : 0x3012285A, LINE);
         c.text(label, x + (w - c.width(label)) / 2, y + (h - c.lineHeight()) / 2 + 1, TEXT);
         return hov && clicked;
     }
 
-    private boolean toggle(Canvas c, int x, int y, int w, String label, boolean on) {
-        int h = 14;
-        boolean hov = over(x, y, w, h);
-        if (hov) c.fill(x, y, x + w, y + h, HOVER);
-        c.fill(x + 2, y + 2, x + 12, y + 12, 0x990E204E);
-        border(c, x + 2, y + 2, 10, 10, on ? 0xFFBFE6FF : 0x886EAAFF);
-        if (on) c.fill(x + 4, y + 4, x + 10, y + 10, ACCENT);
-        c.text(label, x + 18, y + 3, on ? TEXT : DIM);
-        return hov && clicked;
+    private String fit(Canvas c, String s, int max) {
+        if (c.width(s) <= max) return s;
+        while (s.length() > 1 && c.width(s + "..") > max) s = s.substring(0, s.length() - 1);
+        return s + "..";
     }
 
-    private void dock(Canvas c, int sw) {
-        String[] names = {"HUD", "Trainer", "Quality"};
-        Tab[] tabs = {Tab.HUD, Tab.TRAINER, Tab.QUALITY};
-        int tw = 70;
-        int total = 70 + tw * 3 + 8;
-        int x = (sw - total) / 2;
-        int y = 8;
-        panel(c, x, y, total, 22);
-        snowflake(c, x + 8, y + 8, ACCENT);
-        c.text("FROST", x + 18, y + 7, TEXT);
-        for (int i = 0; i < 3; i++) {
-            int bx = x + 70 + 4 + i * tw;
-            if (button(c, bx + 2, y + 3, tw - 4, 16, names[i], tab == tabs[i])) tab = tabs[i];
+    /** Starts a settings row (launcher style card). Returns false when it does not fit / is scrolled away. */
+    private boolean row(Canvas c, String title, String desc, int controlW) {
+        int idx = rowIdx++;
+        if (idx < scroll) return false;
+        if (rowY + ROW_H > rowBottom) return false;
+        curY = rowY;
+        rowY += ROW_H + ROW_GAP;
+        shown++;
+        boolean hov = over(cx, curY, cw, ROW_H);
+        card(c, cx, curY, cw, ROW_H, hov ? HOVER : CARD, 0x24 << 24 | 0x8CBEFF);
+        int textMax = cw - controlW - 28;
+        c.text(fit(c, title, textMax), cx + 10, curY + (desc.isEmpty() ? 11 : 5), TEXT);
+        if (!desc.isEmpty()) c.text(fit(c, desc, textMax), cx + 10, curY + 17, DIM);
+        return true;
+    }
+
+    private boolean rowToggle(Canvas c, String title, String desc, boolean on) {
+        if (!row(c, title, desc, 40)) return false;
+        int px = cx + cw - 10 - 28;
+        int py = curY + 9;
+        c.fill(px, py, px + 28, py + 12, on ? BLUE : 0x553A4A6E);
+        c.fill(px, py, px + 28, py + 1, on ? 0xFF6F94FF : 0x30FFFFFF);
+        int kx = on ? px + 17 : px + 2;
+        c.fill(kx, py + 2, kx + 9, py + 10, 0xFFFFFFFF);
+        return over(cx, curY, cw, ROW_H) && clicked;
+    }
+
+    /** -1 / 0 / +1 */
+    private int rowStepper(Canvas c, String title, String desc, String value) {
+        if (!row(c, title, desc, 100)) return 0;
+        int right = cx + cw - 10;
+        int by = curY + 8;
+        int res = 0;
+        if (smallButton(c, right - 16, by, 16, 14, "+")) res = 1;
+        int vw = 52;
+        c.text(value, right - 16 - 4 - vw / 2 - c.width(value) / 2, by + 3, TEXT);
+        if (smallButton(c, right - 16 - 4 - vw - 4 - 16, by, 16, 14, "-")) res = -1;
+        return res;
+    }
+
+    /** Index of the option clicked, or -1. */
+    private int rowSegment(Canvas c, String title, String desc, String[] opts, int sel) {
+        int totalW = 0;
+        for (String o : opts) totalW += c.width(o) + 14 + 3;
+        if (!row(c, title, desc, totalW)) return -1;
+        int x = cx + cw - 10 - totalW + 3;
+        int by = curY + 7;
+        int res = -1;
+        for (int i = 0; i < opts.length; i++) {
+            int bw = c.width(opts[i]) + 14;
+            boolean hov = over(x, by, bw, 16);
+            c.fill(x, by, x + bw, by + 16, i == sel ? BLUE : (hov ? 0x553D6BFF : 0x2A8CBEFF));
+            c.text(opts[i], x + 7, by + 5, TEXT);
+            if (hov && clicked) res = i;
+            x += bw + 3;
         }
+        return res;
     }
 
-    // ---------------------------------------------------------------- HUD tab
-
-    private Models.Widget widget(String kind) {
-        for (Models.Widget w : state.hud.widgets) if (w.kind.equals(kind)) return w;
-        return null;
+    /** Index of the button clicked, or -1. */
+    private int rowButtons(Canvas c, String title, String desc, String[] labels) {
+        int totalW = 0;
+        for (String o : labels) totalW += c.width(o) + 20 + 4;
+        if (!row(c, title, desc, totalW)) return -1;
+        int x = cx + cw - 10 - totalW + 4;
+        int by = curY + 6;
+        int res = -1;
+        for (int i = 0; i < labels.length; i++) {
+            int bw = c.width(labels[i]) + 20;
+            boolean hov = over(x, by, bw, 18);
+            c.fill(x, by, x + bw, by + 18, i == 0 ? (hov ? 0xFF5B86FF : BLUE) : (hov ? 0x553D6BFF : 0x2A8CBEFF));
+            c.text(labels[i], x + 10, by + 6, TEXT);
+            if (hov && clicked) res = i;
+            x += bw + 4;
+        }
+        return res;
     }
 
-    private void hudTab(Canvas c, int sw, int sh) {
-        // widget list
-        int lx = 8;
-        int ly = 40;
-        int lw = 138;
-        List<Models.Widget> ws = state.hud.widgets;
-        panel(c, lx, ly, lw, 18 + ws.size() * 14 + 6);
-        c.text("Widgets", lx + 8, ly + 5, DIM);
-        int y = ly + 18;
+    private void changed() {
+        host.settingsChanged();
+    }
+
+    // ---------------------------------------------------------------- HUD
+
+    private void hudTab(Canvas c) {
+        java.util.List<Models.Widget> ws = state.hud.widgets;
+        float scale = ws.isEmpty() ? 1f : ws.get(0).scale;
+        int opacity = ws.isEmpty() ? 120 : ws.get(0).opacity;
+        int d = rowStepper(c, "Size", "Scale of every HUD element", String.format(Locale.ROOT, "%.1fx", scale));
+        if (d != 0) {
+            for (Models.Widget w : ws) w.scale = Math.max(0.7f, Math.min(1.6f, Math.round((w.scale + 0.1f * d) * 10f) / 10f));
+            changed();
+        }
+        d = rowStepper(c, "Opacity", "How see-through the panels are", Math.round(opacity / 2.55f) + "%");
+        if (d != 0) {
+            for (Models.Widget w : ws) w.opacity = Math.max(20, Math.min(255, w.opacity + 20 * d));
+            changed();
+        }
         for (Models.Widget w : ws) {
-            if (toggle(c, lx + 4, y, lw - 8, label(w.kind), w.enabled)) {
+            if (rowToggle(c, label(w.kind), "", w.enabled)) {
                 w.enabled = !w.enabled;
-                selected = w.kind;
-                host.settingsChanged();
-            } else if (over(lx + 4, y, lw - 8, 14) && clicked) {
-                selected = w.kind;
-            }
-            if (w.kind.equals(selected)) border(c, lx + 1, y, lw - 2, 14, ACCENT);
-            y += 14;
-        }
-
-        // inspector
-        Models.Widget sel = widget(selected);
-        int ix = sw - 158;
-        int iy = 40;
-        int iw = 150;
-        panel(c, ix, iy, iw, 112);
-        if (sel != null) {
-            c.text(label(sel.kind), ix + 8, iy + 6, ACCENT);
-            c.text("Scale", ix + 8, iy + 24, DIM);
-            if (button(c, ix + 70, iy + 20, 16, 14, "-", false)) { sel.scale = Math.max(0.5f, round1(sel.scale - 0.1f)); host.settingsChanged(); }
-            c.text(String.format(Locale.ROOT, "%.1f", sel.scale), ix + 91, iy + 24, TEXT);
-            if (button(c, ix + 120, iy + 20, 16, 14, "+", false)) { sel.scale = Math.min(3f, round1(sel.scale + 0.1f)); host.settingsChanged(); }
-            c.text("Opacity", ix + 8, iy + 44, DIM);
-            if (button(c, ix + 70, iy + 40, 16, 14, "-", false)) { sel.opacity = Math.max(0, sel.opacity - 20); host.settingsChanged(); }
-            c.text(Math.round(sel.opacity / 2.55f) + "%", ix + 91, iy + 44, TEXT);
-            if (button(c, ix + 120, iy + 40, 16, 14, "+", false)) { sel.opacity = Math.min(255, sel.opacity + 20); host.settingsChanged(); }
-            c.text("Grid", ix + 8, iy + 64, DIM);
-            if (button(c, ix + 70, iy + 60, 16, 14, "-", false)) { state.hud.snap_grid = Math.max(1f, state.hud.snap_grid - 1f); host.settingsChanged(); }
-            c.text(String.valueOf(Math.round(state.hud.snap_grid)), ix + 91, iy + 64, TEXT);
-            if (button(c, ix + 120, iy + 60, 16, 14, "+", false)) { state.hud.snap_grid = Math.min(32f, state.hud.snap_grid + 1f); host.settingsChanged(); }
-            if (button(c, ix + 8, iy + 84, iw - 16, 18, "Reset position", false)) {
-                sel.pos = new float[] {6f, 6f};
-                host.settingsChanged();
+                changed();
             }
         }
-        c.text("Drag a widget to move it", sw / 2 - c.width("Drag a widget to move it") / 2, sh - 24, DIM);
-
-        // dragging (skip while the pointer is on one of our panels)
-        boolean onUi = over(lx, ly, lw, 18 + ws.size() * 14 + 6) || over(ix, iy, iw, 112) || over(0, 0, sw, 32);
-        if (clicked && !onUi) {
-            for (int i = ws.size() - 1; i >= 0; i--) {
-                Models.Widget w = ws.get(i);
-                int[] b = w.enabled ? state.bounds.get(w.kind) : null;
-                if (b != null && over(b[0], b[1], Math.max(b[2], 8), Math.max(b[3], 8))) {
-                    dragging = w.kind;
-                    selected = w.kind;
-                    dragDx = mx - b[0];
-                    dragDy = my - b[1];
-                    break;
-                }
-            }
-        }
-        if (dragging != null && wasDown) {
-            Models.Widget w = widget(dragging);
-            if (w != null) {
-                float g = Math.max(1f, state.hud.snap_grid);
-                float nx = Math.max(0, Math.min(sw - 10, mx - dragDx));
-                float ny = Math.max(0, Math.min(sh - 10, my - dragDy));
-                w.pos = new float[] {Math.round(nx / g) * g, Math.round(ny / g) * g};
-            }
-        }
-        if (released && dragging != null) host.settingsChanged();
-        // outline of the selected widget
-        int[] sb = state.bounds.get(selected);
-        if (sb != null && sel != null && sel.enabled) border(c, sb[0] - 2, sb[1] - 2, sb[2] + 4, sb[3] + 4, ACCENT);
     }
 
-    private static float round1(float v) {
-        return Math.round(v * 10f) / 10f;
-    }
+    // ---------------------------------------------------------------- Trainer
 
-    // ---------------------------------------------------------------- Trainer tab
-
-    private void trainerTab(Canvas c, int sw, int sh) {
-        int w = 300;
-        int h = 196;
-        int x = (sw - w) / 2;
-        int y = 44;
-        panel(c, x, y, w, h);
-        c.text("Combat bots", x + 8, y + 6, ACCENT);
-        int bx = x + 8;
-        for (int i = 0; i < STYLES.length; i++) {
-            int bw = c.width(STYLE_NAMES[i]) + 10;
-            if (bx + bw > x + w - 8) break;
-            if (button(c, bx, y + 20, bw, 16, STYLE_NAMES[i], styleIdx == i)) styleIdx = i;
-            bx += bw + 3;
-        }
-        c.text("Difficulty", x + 8, y + 46, DIM);
-        if (button(c, x + 80, y + 42, 16, 14, "-", false)) difficulty = Math.max(0.1f, round05(difficulty - 0.05f));
-        c.text(Math.round(difficulty * 100) + "%", x + 102, y + 46, TEXT);
-        if (button(c, x + 134, y + 42, 16, 14, "+", false)) difficulty = Math.min(1f, round05(difficulty + 0.05f));
-        c.text("Arena", x + 8, y + 68, DIM);
-        int ax = x + 50;
-        for (int i = 0; i < ArenaPlan.KINDS.length; i++) {
-            int aw = c.width(ArenaPlan.NAMES[i]) + 10;
-            if (button(c, ax, y + 64, aw, 16, ArenaPlan.NAMES[i], arenaIdx == i)) arenaIdx = i;
-            ax += aw + 3;
-        }
-        if (toggle(c, x + 6, y + 84, w - 12, "Give me a kit", kit)) kit = !kit;
-        if (button(c, x + 8, y + 104, 90, 18, "Spawn bot", false)) {
-            if (host.launcherConnected()) {
-                host.requestBot(STYLES[styleIdx], difficulty, ArenaPlan.KINDS[arenaIdx], kit);
-                message = STYLE_NAMES[styleIdx] + " bot requested";
-            } else {
-                message = "Start the game from the Frost launcher to use bots";
-            }
-        }
-        if (button(c, x + 104, y + 104, 90, 18, "Remove bots", false)) {
+    private void trainerTab(Canvas c) {
+        int s = rowSegment(c, "Fighting style", "Weapon and tactics of the bot", STYLE_NAMES, styleIdx);
+        if (s >= 0) styleIdx = s;
+        int d = rowStepper(c, "Difficulty", "Higher = faster aim, tighter spacing, better combos", Math.round(difficulty * 100) + "%");
+        if (d != 0) difficulty = Math.max(0.1f, Math.min(1f, Math.round((difficulty + 0.05f * d) * 20f) / 20f));
+        int a = rowSegment(c, "Arena", "Built around you, then you are teleported in", ArenaPlan.NAMES, arenaIdx);
+        if (a >= 0) arenaIdx = a;
+        if (rowToggle(c, "Give me a kit", "Armor, weapon, blocks and food", kit)) kit = !kit;
+        int b = rowButtons(c, "Bots", "The bot learns what works against you", new String[] {"Spawn bot", "Remove all"});
+        if (b == 0) {
+            host.requestBot(STYLES[styleIdx], difficulty, ArenaPlan.KINDS[arenaIdx], kit);
+            message = STYLE_NAMES[styleIdx] + " bot spawned";
+        } else if (b == 1) {
             host.clearBots();
             message = "Bots removed";
         }
-        c.text(host.launcherConnected() ? "Launcher connected" : "Launcher not connected", x + 8, y + 128, host.launcherConnected() ? ACCENT : 0xFFFF8A9A);
-
-        if (toggle(c, x + 6, y + 148, w - 12, "Knockback trainer", state.knockbackTrainer)) {
+        if (rowToggle(c, "Knockback trainer", "Practice taking and dealing knockback", state.knockbackTrainer)) {
             state.knockbackTrainer = !state.knockbackTrainer;
             message = "Knockback trainer " + (state.knockbackTrainer ? "on" : "off");
         }
-        if (toggle(c, x + 6, y + 164, w - 12, "Bedwars bridge trainer", state.bedwarsBridgeTrainer)) {
+        if (rowToggle(c, "Bedwars bridge trainer", "Shows your bridging speed", state.bedwarsBridgeTrainer)) {
             state.bedwarsBridgeTrainer = !state.bedwarsBridgeTrainer;
             message = "Bridge trainer " + (state.bedwarsBridgeTrainer ? "on" : "off");
         }
     }
 
-    private static float round05(float v) {
-        return Math.round(v * 20f) / 20f;
+    // ---------------------------------------------------------------- Gameplay
+
+    private void gameplayTab(Canvas c) {
+        Models.Qol q = state.qol;
+        if (rowToggle(c, "Fullbright", "Everything is bright, even caves", q.fullbright)) { q.fullbright = !q.fullbright; changed(); }
+        if (rowToggle(c, "Minimal viewmodel", "Smaller held items", q.minimal_viewmodel)) { q.minimal_viewmodel = !q.minimal_viewmodel; changed(); }
+        if (rowToggle(c, "Item physics", "Dropped items lie flat", q.item_physics)) { q.item_physics = !q.item_physics; changed(); }
+        if (rowToggle(c, "Dynamic FOV", "Sprint and speed change the field of view", q.dynamic_fov)) { q.dynamic_fov = !q.dynamic_fov; changed(); }
+        if (rowToggle(c, "Zoom", "Hold the zoom key", q.zoom_enabled)) { q.zoom_enabled = !q.zoom_enabled; changed(); }
+        int d = rowStepper(c, "Zoom FOV", "Field of view while zooming", Math.round(q.zoom_fov) + " deg");
+        if (d != 0) { q.zoom_fov = Math.max(10f, Math.min(60f, q.zoom_fov + 5f * d)); changed(); }
+        if (rowToggle(c, "Hitboxes", "Show entity hitboxes", q.hitboxes)) { q.hitboxes = !q.hitboxes; changed(); }
+        if (rowToggle(c, "Coordinates", "XYZ on the HUD", q.show_coordinates)) { q.show_coordinates = !q.show_coordinates; changed(); }
+        if (rowToggle(c, "Biome", "Biome name on the HUD", q.show_biome)) { q.show_biome = !q.show_biome; changed(); }
     }
 
-    // ---------------------------------------------------------------- Quality tab
+    // ---------------------------------------------------------------- Performance
 
-    private void qualityTab(Canvas c, int sw, int sh) {
+    private void performanceTab(Canvas c) {
         Models.Qol q = state.qol;
-        int w = 320;
-        int h = 22 + 5 * 14 + 30;
-        int x = (sw - w) / 2;
-        int y = 44;
-        panel(c, x, y, w, h);
-        c.text("Quality of life", x + 8, y + 6, ACCENT);
-        int cw = (w - 12) / 2;
-        int row = y + 22;
-        if (toggle(c, x + 6, row, cw, "Fullbright", q.fullbright)) { q.fullbright = !q.fullbright; host.settingsChanged(); }
-        if (toggle(c, x + 6 + cw, row, cw, "Minimal viewmodel", q.minimal_viewmodel)) { q.minimal_viewmodel = !q.minimal_viewmodel; host.settingsChanged(); }
-        row += 14;
-        if (toggle(c, x + 6, row, cw, "Item physics", q.item_physics)) { q.item_physics = !q.item_physics; host.settingsChanged(); }
-        if (toggle(c, x + 6 + cw, row, cw, "Dynamic FOV", q.dynamic_fov)) { q.dynamic_fov = !q.dynamic_fov; host.settingsChanged(); }
-        row += 14;
-        if (toggle(c, x + 6, row, cw, "Zoom", q.zoom_enabled)) { q.zoom_enabled = !q.zoom_enabled; host.settingsChanged(); }
-        if (toggle(c, x + 6 + cw, row, cw, "Hitboxes", q.hitboxes)) { q.hitboxes = !q.hitboxes; host.settingsChanged(); }
-        row += 14;
-        if (toggle(c, x + 6, row, cw, "Coordinates", q.show_coordinates)) { q.show_coordinates = !q.show_coordinates; host.settingsChanged(); }
-        if (toggle(c, x + 6 + cw, row, cw, "Biome", q.show_biome)) { q.show_biome = !q.show_biome; host.settingsChanged(); }
-        row += 14;
-        if (toggle(c, x + 6, row, cw, "FPS boost", q.fps_boost)) { q.fps_boost = !q.fps_boost; host.settingsChanged(); }
-        if (toggle(c, x + 6 + cw, row, cw, "Chunk optimizer", q.chunk_optimizer)) { q.chunk_optimizer = !q.chunk_optimizer; host.settingsChanged(); }
-        row += 20;
-        c.text("Zoom FOV", x + 8, row + 3, DIM);
-        if (button(c, x + 80, row, 16, 14, "-", false)) { q.zoom_fov = Math.max(10f, q.zoom_fov - 5f); host.settingsChanged(); }
-        c.text(Math.round(q.zoom_fov) + "°", x + 102, row + 3, TEXT);
-        if (button(c, x + 134, row, 16, 14, "+", false)) { q.zoom_fov = Math.min(60f, q.zoom_fov + 5f); host.settingsChanged(); }
+        if (rowToggle(c, "FPS boost", "Cheaper rendering where it is not noticeable", q.fps_boost)) { q.fps_boost = !q.fps_boost; changed(); }
+        if (rowToggle(c, "Fast graphics", "Flat lighting and simple leaves", q.fast_graphics)) { q.fast_graphics = !q.fast_graphics; changed(); }
+        if (rowToggle(c, "Chunk optimizer", "Limits how far chunks are rebuilt", q.chunk_optimizer)) { q.chunk_optimizer = !q.chunk_optimizer; changed(); }
+        int d = rowStepper(c, "Render distance cap", "Chunks, applied by the optimizer", String.valueOf(q.chunk_render_cap));
+        if (d != 0) { q.chunk_render_cap = Math.max(4, Math.min(32, q.chunk_render_cap + d)); changed(); }
+        if (rowToggle(c, "No clouds", "Skip cloud rendering", q.no_clouds)) { q.no_clouds = !q.no_clouds; changed(); }
+        if (rowToggle(c, "No entity shadows", "Remove the shadow blob under mobs", q.no_entity_shadows)) { q.no_entity_shadows = !q.no_entity_shadows; changed(); }
+        if (rowToggle(c, "Low biome blend", "Cheaper chunk meshing", q.low_biome_blend)) { q.low_biome_blend = !q.low_biome_blend; changed(); }
+        if (rowToggle(c, "Cap simulation distance", "Fewer ticking chunks around you", q.cap_sim_distance)) { q.cap_sim_distance = !q.cap_sim_distance; changed(); }
+        d = rowStepper(c, "Simulation distance", "Used when the cap is on", String.valueOf(q.sim_distance_cap));
+        if (d != 0) { q.sim_distance_cap = Math.max(4, Math.min(16, q.sim_distance_cap + d)); changed(); }
+        if (rowToggle(c, "No menu blur", "Remove the blurred menu background", q.no_menu_blur)) { q.no_menu_blur = !q.no_menu_blur; changed(); }
     }
 }

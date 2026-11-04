@@ -26,6 +26,8 @@ public final class FrostState {
     public final Map<String, int[]> bounds = new ConcurrentHashMap<String, int[]>();
 
     /** Short on-screen notice (drawn by the HUD for a few seconds). */
+    /** PNG of the custom cape the player wears (null = built-in Frost cape). */
+    public volatile byte[] ownCapePng;
     public volatile String notice = "";
     public volatile long noticeUntil;
 
