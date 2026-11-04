@@ -28,6 +28,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: "9.2.1" }
       - run: bash ci/run.sh gradle -p agent build --stacktrace
+      - name: Inspect game classes
+        continue-on-error: true
+        run: bash ci/inspect.sh net.minecraft.client.multiplayer.PlayerInfo net.minecraft.world.entity.player.PlayerSkin net.minecraft.core.ClientAsset net.minecraft.core.ClientAsset\$ResourceTexture net.minecraft.core.ClientAsset\$Texture net.minecraft.client.renderer.texture.DynamicTexture net.minecraft.client.renderer.texture.TextureManager com.mojang.blaze3d.platform.NativeImage net.minecraft.resources.ResourceLocation net.minecraft.resources.Identifier net.minecraft.client.renderer.entity.layers.CapeLayer net.minecraft.client.resources.SkinManager
       - uses: actions/upload-artifact@v4
         with:
           name: mod-fabric-121
@@ -46,6 +49,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: "9.2.1" }
       - run: bash ci/run.sh gradle -p agent-26 build --stacktrace
+      - name: Inspect game classes
+        continue-on-error: true
+        run: bash ci/inspect.sh net.minecraft.client.multiplayer.PlayerInfo net.minecraft.world.entity.player.PlayerSkin net.minecraft.core.ClientAsset net.minecraft.core.ClientAsset\$ResourceTexture net.minecraft.core.ClientAsset\$Texture net.minecraft.client.renderer.texture.DynamicTexture net.minecraft.client.renderer.texture.TextureManager com.mojang.blaze3d.platform.NativeImage net.minecraft.resources.Identifier net.minecraft.client.renderer.entity.layers.CapeLayer net.minecraft.client.resources.SkinManager net.minecraft.client.renderer.entity.player.AvatarRenderer
       - uses: actions/upload-artifact@v4
         with:
           name: mod-fabric-26
