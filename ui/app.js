@@ -60,8 +60,6 @@ const S = {
   page: 'home', st: null, cfg: null, sel: '1.21.11',
   launch: { phase: 'idle', msg: '', frac: 0 }, loggingIn: false,
   settingsTab: 'launcher', hudSel: 'cps', ipc: false,
-  bot: { style: 'sword', difficulty: 0.8, arena: 'flat', kit: true, kb: false, bridge: false },
-  skin: { b64: null, url: null, slim: false }, cape: { b64: null, url: null },
   mr: { mc: null, kind: 'mod', category: '', query: '', sort: 'relevance', offset: 0, limit: 24, page: null, loading: false, error: '', installed: [], busy: new Set(), tab: 'discover', token: 0 },
 };
 
@@ -110,10 +108,10 @@ function render() {
     versions: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m12 3 9 5-9 5-9-5zM3 13l9 5 9-5"/></svg>',
     browse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg>',
     cosmetics: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m12 3 2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.4 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/></svg>',
-    hud: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h5M7 13h9"/></svg>',
-    trainer: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>',
+    skinedit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 20l4-1L19 8l-3-3L5 16z"/><path d="M14 7l3 3"/></svg>',
+    capeedit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M8 4h8l3 4-2 12H7L5 8z"/><path d="M9 4c0 2 6 2 6 0"/></svg>',
   };
-  const nav = [['home', 'Home'], ['versions', 'Versions'], ['browse', 'Browse'], ['cosmetics', 'Cosmetics'], ['hud', 'HUD studio'], ['trainer', 'Trainer']];
+  const nav = [['home', 'Home'], ['versions', 'Versions'], ['browse', 'Browse'], ['cosmetics', 'Capes'], ['skinedit', 'Skin editor'], ['capeedit', 'Cape editor']];
   $('#app').innerHTML = `
     <div class="shell">
       <aside class="rail">
@@ -130,7 +128,7 @@ function render() {
         <header class="top"><div class="drag" data-act="drag"></div><div class="grow"></div>
           <div class="tools"><button class="ico" data-act="win-min">${ICON.min}</button><button class="ico" data-act="win-max">${ICON.max}</button><button class="ico" data-act="win-close">${ICON.close}</button></div>
         </header>
-        <main class="view ${['home', 'hud'].includes(S.page) ? 'flush' : ''}" id="view"></main>
+        <main class="view ${['home'].includes(S.page) ? 'flush' : ''}" id="view"></main>
       </div>
     </div>`;
   renderView();
@@ -139,9 +137,9 @@ function render() {
 function renderView() {
   const v = $('#view');
   if (!v) return;
-  const pages = { home: pageHome, versions: pageVersions, browse: pageBrowse, cosmetics: pageCosmetics, hud: pageHud, trainer: pageTrainer, settings: pageSettings };
+  const pages = { home: pageHome, versions: pageVersions, browse: pageBrowse, cosmetics: pageCosmetics, skinedit: pageSkinEditor, capeedit: pageCapeEditor, settings: pageSettings };
   v.innerHTML = pages[S.page]();
-  if (S.page === 'hud') hudLayout();
+  if (typeof studioMount === 'function') studioMount();
   if (S.page === 'browse') browseLoadIfNeeded();
 }
 
@@ -301,139 +299,6 @@ async function mrSearch() {
   if (token === M.token) { M.loading = false; refreshMr(); }
 }
 
-/* ------------------------------------------------------------------ cosmetics */
-function pageCosmetics() {
-  const acc = S.st.account;
-  if (!acc) return `<h1 class="page-title">Cosmetics</h1><div class="empty">Sign in with Microsoft to change your skin and cape.<br><br><button class="btn" data-act="login">Sign in with Microsoft</button></div>`;
-  return `<h1 class="page-title">Cosmetics</h1><div class="page-sub">Signed in as ${esc(acc.username)}</div>
-  <div class="cos">
-    <section class="card glass"><h3>Skin</h3>
-      <p>Works everywhere — the skin is changed on your Minecraft account itself.</p>
-      <div class="preview">
-        <img src="https://mc-heads.net/body/${esc(acc.uuid)}/160" alt="Current skin" onerror="this.style.visibility='hidden'">
-        ${S.skin.url ? `<img class="pimg" src="${S.skin.url}" alt="New skin">` : ''}
-      </div>
-      <label class="drop" data-act="pick-skin">${S.skin.b64 ? 'New skin selected — choose another' : 'Choose a 64×64 skin PNG'}</label>
-      <div class="line"><div class="seg"><button class="${!S.skin.slim ? 'on' : ''}" data-act="skin-variant" data-s="0">Classic</button><button class="${S.skin.slim ? 'on' : ''}" data-act="skin-variant" data-s="1">Slim</button></div>
-        <div class="grow"></div><button class="btn" data-act="skin-upload" ${S.skin.b64 ? '' : 'disabled'}>Apply skin</button></div>
-    </section>
-    <section class="card glass"><h3>Cape <span class="tag">Frost exclusive</span></h3>
-      <p>Visible to other Frost Client players. Upload a 64×32 (or 22×17) cape texture.</p>
-      <div class="preview">${S.cape.url ? `<img class="pimg" src="${S.cape.url}" alt="Cape">` : '<div style="color:var(--ink-3)">No cape selected</div>'}</div>
-      <label class="drop" data-act="pick-cape">${S.cape.b64 ? 'Cape selected — choose another' : 'Choose a cape PNG'}</label>
-      <div class="line"><button class="btn danger" data-act="cape-remove">Remove cape</button><div class="grow"></div>
-        <button class="btn" data-act="cape-upload" ${S.cape.b64 ? '' : 'disabled'}>Upload cape</button></div>
-    </section>
-  </div>`;
-}
-
-function pickPng(kind) {
-  const inp = document.createElement('input');
-  inp.type = 'file'; inp.accept = 'image/png';
-  inp.onchange = () => {
-    const f = inp.files[0]; if (!f) return;
-    const r = new FileReader();
-    r.onload = () => { const url = r.result; S[kind] = { ...S[kind], url, b64: String(url).split(',')[1] }; renderView(); };
-    r.readAsDataURL(f);
-  };
-  inp.click();
-}
-
-/* ------------------------------------------------------------------ HUD studio */
-function hudDemo(k) {
-  const sf = '<span class="sf">❄</span>';
-  switch (k) {
-    case 'cps': return `<div class="panel">${sf}<b>CPS</b> 12</div>`;
-    case 'fps': return `<div class="panel">${sf}<b>FPS</b> 240</div>`;
-    case 'ping': return `<div class="panel">${sf}<b>Ping</b> 24 ms</div>`;
-    case 'keystrokes': return `<div class="keys"><i class="w dn">W</i><i>A</i><i class="dn">S</i><i>D</i><i class="sp"></i></div>`;
-    case 'armor_status': return `<div class="panel">${sf}<div class="arm"><u></u><u></u><u></u><u></u></div></div>`;
-    case 'potion_status': return `<div class="panel">${sf}<b>Speed II</b> 0:42</div>`;
-    case 'direction': return `<div class="panel">${sf}<b>NE</b> 45°</div>`;
-    case 'reach_display': return `<div class="panel">${sf}<b>Reach</b> 2.97</div>`;
-    case 'coordinates': return `<div class="panel">${sf}<b>XYZ</b> 128 / 64 / -302 · Plains</div>`;
-    case 'bw_resources': return `<div class="panel">${sf}<b>Fe</b> 48 · <b>Au</b> 12 · <b>Di</b> 3 · <b>Em</b> 1</div>`;
-    case 'bw_blocks': return `<div class="panel">${sf}<b>Blocks</b> 64</div>`;
-    case 'bridge_speed': return `<div class="panel">${sf}<b>Bridge</b> 4.8 b/s</div>`;
-  }
-  return '';
-}
-
-function widget(k) { return S.cfg.hud.widgets.find(w => w.kind === k); }
-
-function pageHud() {
-  const c = S.cfg, w = widget(S.hudSel);
-  return `<div class="studio">
-    <aside class="col glass"><h4>WIDGETS</h4>
-      ${c.hud.widgets.map(x => `<div class="wrow ${x.kind === S.hudSel ? 'sel' : ''}" data-act="hud-pick" data-k="${x.kind}"><span>${esc(HUD_LABELS[x.kind] || x.kind)}</span>
-        <div class="toggle ${x.enabled ? 'on' : ''}" data-act="hud-toggle" data-k="${x.kind}"></div></div>`).join('')}
-    </aside>
-    <div class="stage-wrap">
-      <div class="stage-box" id="stage-box"><div class="stage" id="stage"><div class="grid-bg"></div><div class="xhair"></div>
-        ${c.hud.widgets.map(x => `<div class="hw ${x.kind === S.hudSel ? 'sel' : ''} ${x.enabled ? '' : 'off'}" data-k="${x.kind}" style="left:${x.pos[0]}px;top:${x.pos[1]}px;transform:scale(${x.scale});--o:${(x.opacity / 255).toFixed(2)}">${hudDemo(x.kind)}</div>`).join('')}
-      </div></div>
-      <div class="line"><span class="pill ${S.ipc ? 'ok' : ''}"><i></i>${S.ipc ? 'Game connected — changes apply live' : 'Game not running'}</span><div class="grow"></div>
-        <span style="color:var(--ink-3);font-size:12.5px">Drag widgets to move them · changes save automatically</span></div>
-    </div>
-    <aside class="col glass">
-      <h4>${esc(HUD_LABELS[S.hudSel] || '').toUpperCase()}</h4>
-      <div class="set-row" style="padding:6px 0"><div class="t"><b>Scale</b></div><span class="val" id="v-scale">${w.scale.toFixed(2)}×</span></div>
-      <input type="range" min="0.5" max="2.5" step="0.05" value="${w.scale}" data-bind="hud-scale" style="width:100%">
-      <div class="set-row" style="padding:6px 0;margin-top:8px"><div class="t"><b>Opacity</b></div><span class="val" id="v-op">${Math.round(w.opacity / 2.55)}%</span></div>
-      <input type="range" min="0" max="255" step="5" value="${w.opacity}" data-bind="hud-opacity" style="width:100%">
-      <h4 style="margin-top:22px">QUALITY OF LIFE</h4>
-      ${QOL.map(([k, l]) => `<div class="wrow" data-act="qol" data-k="${k}"><span>${l}</span><div class="toggle ${c.qol[k] ? 'on' : ''}"></div></div>`).join('')}
-      <div class="set-row" style="padding:10px 0 0"><div class="t"><b>Zoom FOV</b></div><span class="val" id="v-zoom">${c.qol.zoom_fov}°</span></div>
-      <input type="range" min="10" max="60" step="1" value="${c.qol.zoom_fov}" data-bind="zoom-fov" style="width:100%">
-    </aside>
-  </div>`;
-}
-
-function hudLayout() {
-  const box = $('#stage-box'), st = $('#stage');
-  if (!box || !st) return;
-  const k = box.clientWidth / 1280;
-  st.style.transform = `scale(${k})`;
-  st.dataset.k = k;
-}
-
-function hudDragStart(e) {
-  let el = e.target.closest('.hw'); if (!el) return;
-  const k = el.dataset.k;
-  if (S.hudSel !== k) { S.hudSel = k; renderView(); el = $(`.hw[data-k="${k}"]`); }
-  const w = widget(k), sc = parseFloat($('#stage').dataset.k) || 1;
-  const sx = e.clientX, sy = e.clientY, ox = w.pos[0], oy = w.pos[1], snap = S.cfg.hud.snap_grid || 1;
-  const move = ev => {
-    const nx = Math.max(0, Math.min(1260, Math.round((ox + (ev.clientX - sx) / sc) / snap) * snap));
-    const ny = Math.max(0, Math.min(700, Math.round((oy + (ev.clientY - sy) / sc) / snap) * snap));
-    w.pos = [nx, ny]; el.style.left = nx + 'px'; el.style.top = ny + 'px';
-  };
-  const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); saveCfg(); };
-  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
-}
-
-/* ------------------------------------------------------------------ trainer */
-function pageTrainer() {
-  const B = S.bot;
-  const styles = [['sword', 'Sword'], ['crystal', 'Crystal'], ['axe_shield', 'Axe & Shield'], ['mace', 'Mace'], ['bedwars_rush', 'Bedwars rush']];
-  return `<h1 class="page-title">Trainer</h1><div class="page-sub">Practice against bots in a singleplayer world.</div>
-  <div class="line" style="margin-bottom:18px"><span class="pill ${S.ipc ? 'ok' : ''}"><i></i>${S.ipc ? 'Game connected' : 'Launch the game and open a singleplayer world first'}</span></div>
-  <div class="trainer">
-    <section class="card glass"><h3>Combat bots</h3><p>Singleplayer only. Spawns a sparring partner; difficulty controls aim, reaction time, crits, spacing and combos. An arena rebuilds the area around you, so use a flat or throwaway world.</p>
-      <div class="stack">
-        <select class="field" data-bind="bot-style">${styles.map(([v, l]) => `<option value="${v}" ${B.style === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
-        <div class="line"><span style="color:var(--ink-2)">Difficulty</span><input type="range" min="0.1" max="1" step="0.05" value="${B.difficulty}" data-bind="bot-diff"><span class="val" id="v-diff">${Math.round(B.difficulty * 100)}%</span></div>
-        <select class="field" data-bind="bot-arena">${[['none', 'No arena'], ['flat', 'Flat arena'], ['crystal', 'Crystal arena'], ['island', 'Island (knock-off)']].map(([v, l]) => `<option value="${v}" ${B.arena === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
-        <div class="set-row" style="padding:0"><div class="t"><b>Give me a kit</b></div><div class="toggle ${B.kit ? 'on' : ''}" data-act="kit-toggle"></div></div>
-        <div class="line"><button class="btn" data-act="bot-spawn">Spawn bot</button><button class="btn ghost" data-act="bot-clear">Remove bots</button></div>
-      </div></section>
-    <section class="card glass"><h3>Knockback trainer</h3><p>Shows when your hits would land and how knockback chains, using the real formula of your version.</p>
-      <div class="set-row" style="padding:0"><div class="t"><b>Enable</b></div><div class="toggle ${B.kb ? 'on' : ''}" data-act="kb-toggle"></div></div></section>
-    <section class="card glass"><h3>Bedwars bridge trainer</h3><p>Measures your bridging speed (blocks per second) and keeps your best.</p>
-      <div class="set-row" style="padding:0"><div class="t"><b>Enable</b></div><div class="toggle ${B.bridge ? 'on' : ''}" data-act="bridge-toggle"></div></div></section>
-  </div>`;
-}
-
 /* ------------------------------------------------------------------ settings */
 function setRow(title, desc, ctl) {
   return `<div class="set-row glass"><div class="t"><b>${title}</b><small>${desc}</small></div>${ctl}</div>`;
@@ -548,23 +413,6 @@ const ACTIONS = {
     try { await inv('mr_remove', { mc: S.mr.mc, projectId: el.dataset.id }); S.mr.installed = await inv('mr_installed', { mc: S.mr.mc }); render(); }
     catch (e) { toast(e, 'err'); }
   },
-  /* cosmetics */
-  'pick-skin': () => pickPng('skin'),
-  'pick-cape': () => pickPng('cape'),
-  'skin-variant': el => { S.skin.slim = el.dataset.s === '1'; renderView(); },
-  'skin-upload': async () => { try { await inv('upload_skin', { pngB64: S.skin.b64, slim: S.skin.slim }); toast('Skin updated', 'ok'); S.skin.b64 = S.skin.url = null; renderView(); } catch (e) { toast(e, 'err'); } },
-  'cape-upload': async () => { try { await inv('upload_cape', { pngB64: S.cape.b64 }); toast('Cape uploaded', 'ok'); S.cape.b64 = S.cape.url = null; renderView(); } catch (e) { toast(e, 'err'); } },
-  'cape-remove': async () => { try { await inv('remove_cape'); toast('Cape removed', 'ok'); } catch (e) { toast(e, 'err'); } },
-  /* hud */
-  'hud-pick': el => { S.hudSel = el.dataset.k; renderView(); },
-  'hud-toggle': (el, e) => { e.stopPropagation(); const w = widget(el.dataset.k); w.enabled = !w.enabled; saveCfg(); renderView(); },
-  qol: el => { const k = el.dataset.k; S.cfg.qol[k] = !S.cfg.qol[k]; saveCfg(); renderView(); },
-  /* trainer */
-  'bot-spawn': () => bridge('spawn_bot', { style: S.bot.style, difficulty: S.bot.difficulty, arena: S.bot.arena, kit: S.bot.kit }, 'Bot requested (singleplayer only)'),
-  'kit-toggle': () => { S.bot.kit = !S.bot.kit; renderView(); },
-  'bot-clear': () => bridge('clear_bots', {}, 'Bots removed'),
-  'kb-toggle': () => { S.bot.kb = !S.bot.kb; bridge('kb_trainer', { enabled: S.bot.kb }, S.bot.kb ? 'Knockback trainer on' : 'Knockback trainer off'); renderView(); },
-  'bridge-toggle': () => { S.bot.bridge = !S.bot.bridge; bridge('bedwars_bridge', { enabled: S.bot.bridge }, S.bot.bridge ? 'Bridge trainer on' : 'Bridge trainer off'); renderView(); },
   /* settings */
   'set-tab': el => { S.settingsTab = el.dataset.t; renderView(); },
   'cfg-toggle': el => { const k = el.dataset.k; S.cfg[k] = !S.cfg[k]; saveCfg(); snowSet(); renderView(); },
@@ -578,27 +426,22 @@ async function bridge(cmd, args, okMsg) {
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]');
   if (!el || el.dataset.act === 'drag') return;
-  const fn = ACTIONS[el.dataset.act];
+  const fn = ACTIONS[el.dataset.act] || (typeof STUDIO_ACTIONS !== 'undefined' ? STUDIO_ACTIONS[el.dataset.act] : null);
   if (fn) fn(el, e);
 });
 document.addEventListener('mousedown', e => { if (e.target.closest('[data-act="drag"]') && e.button === 0) inv('win_drag'); });
 document.addEventListener('dblclick', e => { if (e.target.closest('[data-act="drag"]')) inv('win_toggle_max'); });
-document.addEventListener('pointerdown', e => { if (S.page === 'hud' && e.target.closest('.hw')) { e.preventDefault(); hudDragStart(e); } });
 
 let qTimer = null;
 function onBind(e) {
   const el = e.target.closest('[data-bind]'); if (!el) return;
   const v = el.value, c = S.cfg;
+  if (typeof studioBind === 'function' && studioBind(el, v)) return;
   switch (el.dataset.bind) {
     case 'mr-mc': S.mr.mc = v; S.mr.page = null; render(); break;
     case 'mr-q': clearTimeout(qTimer); qTimer = setTimeout(() => { S.mr.query = v; S.mr.offset = 0; mrSearch(); }, 350); break;
     case 'mr-sort': S.mr.sort = v; S.mr.offset = 0; mrSearch(); break;
-    case 'hud-scale': widget(S.hudSel).scale = +v; $('#v-scale').textContent = (+v).toFixed(2) + '×'; $(`.hw[data-k="${S.hudSel}"]`).style.transform = `scale(${v})`; saveCfg(); break;
-    case 'hud-opacity': widget(S.hudSel).opacity = +v; $('#v-op').textContent = Math.round(v / 2.55) + '%'; $(`.hw[data-k="${S.hudSel}"]`).style.setProperty('--o', (v / 255).toFixed(2)); saveCfg(); break;
     case 'zoom-fov': c.qol.zoom_fov = +v; $('#v-zoom').textContent = v + '°'; saveCfg(); break;
-    case 'bot-style': S.bot.style = v; break;
-    case 'bot-arena': S.bot.arena = v; break;
-    case 'bot-diff': S.bot.difficulty = +v; $('#v-diff').textContent = Math.round(v * 100) + '%'; break;
     case 'while': c.while_playing = v; saveCfg(); break;
     case 'ram': c.ram_mb = +v; $('#v-ram').textContent = (v / 1024).toFixed(1) + ' GB'; saveCfg(); break;
     case 'java': c.java_path = v; saveCfg(); break;
@@ -608,7 +451,6 @@ function onBind(e) {
 }
 document.addEventListener('input', onBind);
 document.addEventListener('change', onBind);
-window.addEventListener('resize', () => { if (S.page === 'hud') hudLayout(); });
 
 /* ------------------------------------------------------------------ snow */
 let snowOn = true;
@@ -656,8 +498,8 @@ async function boot() {
     inv('get_state').then(s => { S.st.instances = s.instances; }).catch(() => {});
   });
   L('launch-progress', e => { S.launch.frac = e.payload.fraction; refreshLaunchBlock(); });
-  L('settings-changed', async () => { const st = await inv('get_state'); S.cfg = st.settings; if (['hud', 'trainer'].includes(S.page)) renderView(); });
+  L('settings-changed', async () => { const st = await inv('get_state'); S.cfg = st.settings; });
   L('launch-warning', e => toast(e.payload, 'err'));
-  L('ipc-connected', e => { S.ipc = e.payload; if (['hud', 'trainer'].includes(S.page)) renderView(); });
+  L('ipc-connected', e => { S.ipc = e.payload; });
 }
 boot().catch(e => { document.body.insertAdjacentHTML('beforeend', `<pre style="position:fixed;left:20px;top:90px;color:#ff9aa8;z-index:99">${esc(e)}</pre>`); });
