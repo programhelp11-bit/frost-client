@@ -114,6 +114,7 @@ public class FrostForge {
         Stats.tick(mc);
         Qol.tick(mc);
         TabIcons.tick(mc, ticks);
+        Capes.tick(mc, ticks);
         Bots.tick(mc);
         if (ticks % 2 == 0 && link.connected() && mc.thePlayer != null) {
             JsonObject msg = new JsonObject();
