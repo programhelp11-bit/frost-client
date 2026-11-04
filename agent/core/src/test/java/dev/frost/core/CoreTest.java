@@ -170,4 +170,18 @@ class CoreTest {
         Dispatcher.handle(st, JsonParser.parseString("{\"type\":\"notice\",\"text\":\"hi\"}").getAsJsonObject());
         assertEquals("hi", st.notice);
     }
+
+    @Test
+    void combatMaths() {
+        // full netherite takes roughly a quarter of a netherite sword hit, vanilla formula
+        float d = Combat.afterArmor(8f, 20f, 12f, false);
+        assertTrue(d > 1.5f && d < 3f, "got " + d);
+        // 1.8: 20 armor points = 80% reduction
+        assertEquals(1.4f, Combat.afterArmor(7f, 20f, 0f, true), 0.01f);
+        assertTrue(Combat.isCrit(false, -0.2, false, false));
+        assertFalse(Combat.isCrit(false, -0.2, true, false));
+        assertFalse(Combat.isCrit(true, 0.0, false, false));
+        assertEquals(0f, Combat.hurt(1f, 5f));
+        assertTrue(Combat.weaponDamage("axe_shield", false) > Combat.weaponDamage("sword", false));
+    }
 }

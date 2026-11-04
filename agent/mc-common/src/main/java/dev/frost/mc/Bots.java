@@ -2,6 +2,7 @@ package dev.frost.mc;
 
 import com.google.gson.JsonObject;
 import com.mojang.authlib.GameProfile;
+import dev.frost.core.Combat;
 import dev.frost.core.Dispatcher;
 import dev.frost.core.FrostState;
 import dev.frost.core.Knockback;
@@ -14,6 +15,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.MoverType;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.EntityHitResult;
@@ -38,11 +40,17 @@ public final class Bots {
         RemotePlayer entity;
         Models.BotConfig cfg;
         Vec3 velocity = Vec3.ZERO;
+        float hp = 20f;
+        int invul;      // ticks of damage immunity after being hit
+        int respawnIn = -1;
     }
 
     private static final Map<Integer, Bot> BOTS = new HashMap<>();
     private static ClientLevel levelOfBots;
     private static boolean lastAttack;
+    private static int kills;
+    private static int deaths;
+    private static float lastPlayerHp = 20f;
 
     private Bots() {}
 
@@ -75,6 +83,14 @@ public final class Bots {
             spawn(level, player, cfg);
         }
 
+        // count the player's deaths for the score line
+        float hpNow = player.getHealth();
+        if (lastPlayerHp > 0f && hpNow <= 0f && !BOTS.isEmpty()) {
+            deaths++;
+            st.notify("Frost: you lost  |  score " + kills + " - " + deaths);
+        }
+        lastPlayerHp = hpNow;
+
         boolean attackNow = mc.options.keyAttack.isDown();
         boolean attackPressed = attackNow && !lastAttack;
         lastAttack = attackNow;
@@ -82,12 +98,16 @@ public final class Bots {
         Iterator<Bot> it = BOTS.values().iterator();
         while (it.hasNext()) {
             Bot bot = it.next();
+            if (bot.respawnIn >= 0) {
+                if (--bot.respawnIn < 0) respawn(level, player, bot);
+                continue;
+            }
             if (bot.entity.isRemoved()) {
                 it.remove();
                 continue;
             }
             if (attackPressed) playerHitsBot(mc, player, bot);
-            stepBot(player, bot, st);
+            stepBot(mc, player, bot, st);
         }
     }
 
@@ -134,8 +154,33 @@ public final class Bots {
         BOTS.put(cfg.id, bot);
     }
 
-    private static void stepBot(LocalPlayer player, Bot bot, FrostState st) {
+    private static void respawn(ClientLevel level, LocalPlayer p, Bot bot) {
+        double[] a = Arena.botSpawn;
         RemotePlayer e = bot.entity;
+        if (e.isRemoved()) {
+            spawn(level, p, bot.cfg);
+            return;
+        }
+        if (a != null) e.setPos(a[0], a[1], a[2]);
+        else e.setPos(p.getX() + 4, p.getY(), p.getZ() + 4);
+        bot.hp = 20f;
+        bot.invul = 20;
+        bot.velocity = Vec3.ZERO;
+        e.setInvisible(false);
+        nameTag(bot);
+    }
+
+    private static void nameTag(Bot bot) {
+        bot.entity.setCustomName(Component.literal(bot.cfg.name + " \u00a7c" + (int) Math.ceil(bot.hp) + "\u2764"));
+    }
+
+    private static void stepBot(Minecraft mc, LocalPlayer player, Bot bot, FrostState st) {
+        RemotePlayer e = bot.entity;
+        if (bot.invul > 0) bot.invul--;
+        if (bot.hp < 20f) {
+            bot.hp = Math.min(20f, bot.hp + Combat.regenPerSecond() / 20f);
+            if (bot.entity.tickCount % 20 == 0) nameTag(bot);
+        }
 
         // 1) tell the Rust brain what the bot sees
         if (FrostMc.link() != null && FrostMc.link().connected()) {
@@ -144,6 +189,7 @@ public final class Bots {
             obs.bot_yaw = e.getYRot();
             obs.bot_pitch = e.getXRot();
             obs.on_ground = e.onGround();
+            obs.bot_health = bot.hp;
             Vec3 pm = player.getDeltaMovement();
             obs.target_pos = new Models.Vec3(player.getX(), player.getY(), player.getZ());
             obs.target_vel = new Models.Vec3(pm.x, pm.y, pm.z);
@@ -182,7 +228,7 @@ public final class Bots {
             if (c.jump && e.onGround()) {
                 bot.velocity = new Vec3(bot.velocity.x, 0.42, bot.velocity.z);
             }
-            if (c.attack) botAttacks(player, bot, c.sprint);
+            if (c.attack) botAttacks(mc, player, bot, c.sprint);
         }
 
         // 3) simple vanilla-like physics
@@ -194,25 +240,53 @@ public final class Bots {
         if (e.onGround() && bot.velocity.y < 0) bot.velocity = new Vec3(bot.velocity.x, 0, bot.velocity.z);
     }
 
-    private static void botAttacks(LocalPlayer player, Bot bot, boolean sprint) {
+    private static void botAttacks(Minecraft mc, LocalPlayer player, Bot bot, boolean sprint) {
         RemotePlayer e = bot.entity;
         e.swing(InteractionHand.MAIN_HAND);
         double dx = player.getX() - e.getX();
         double dz = player.getZ() - e.getZ();
         double reach = Math.sqrt(dx * dx + dz * dz + Math.pow(player.getY() - e.getY(), 2));
-        if (reach > 3.4) return;
-        Vec3 pv = player.getDeltaMovement();
-        double[] v = Knockback.apply(FrostState.INSTANCE.kbProfile, pv.x, pv.y, pv.z, player.onGround(),
-            dx, dz, e.getYRot(), sprint, 0);
-        player.setDeltaMovement(v[0], v[1], v[2]);
-        player.animateHurt(e.getYRot());
-        FrostMc.sendKnockbackEvent(false);
+        if (reach > 3.4 || player.hurtTime > 0 || player.getHealth() <= 0f || player.isCreative()) return;
+        boolean legacy = bot.cfg.legacy_combat;
+        float dmg = Combat.weaponDamage(bot.cfg.style, legacy);
+        if (Combat.isCrit(e.onGround(), bot.velocity.y, sprint, legacy)) dmg *= 1.5f;
+        boolean blocked = player.isBlocking();
+        if (!blocked) {
+            damagePlayer(mc, player, dmg);
+            Vec3 pv = player.getDeltaMovement();
+            double[] v = Knockback.apply(FrostState.INSTANCE.kbProfile, pv.x, pv.y, pv.z, player.onGround(),
+                dx, dz, e.getYRot(), sprint, 0);
+            player.setDeltaMovement(v[0], v[1], v[2]);
+            player.animateHurt(e.getYRot());
+            FrostMc.sendKnockbackEvent(false);
+        }
+    }
+
+    /** Real damage through the integrated server (armor, totems and death work like vanilla). */
+    private static void damagePlayer(Minecraft mc, LocalPlayer player, float amount) {
+        net.minecraft.server.MinecraftServer server = mc.getSingleplayerServer();
+        if (server == null) return;
+        final String cmd = String.format(java.util.Locale.ROOT, "damage %s %.2f minecraft:mob_attack", player.getUUID(), amount);
+        server.execute(() -> {
+            try {
+                server.getCommands().performPrefixedCommand(server.createCommandSourceStack().withSuppressedOutput(), cmd);
+            } catch (Throwable ignored) {
+            }
+        });
     }
 
     private static void playerHitsBot(Minecraft mc, LocalPlayer player, Bot bot) {
         HitResult hr = mc.hitResult;
         if (!(hr instanceof EntityHitResult ehr) || ehr.getEntity() != bot.entity) return;
         if (player.getEyePosition().distanceTo(ehr.getLocation()) > 3.1) return;
+        if (bot.invul > 0) return;
+        boolean legacy = bot.cfg.legacy_combat;
+        float scale = legacy ? 1f : player.getAttackStrengthScale(0.5f);
+        float dmg = (float) player.getAttributeValue(Attributes.ATTACK_DAMAGE) * (0.2f + scale * scale * 0.8f);
+        if (scale > 0.9f && Combat.isCrit(player.onGround(), player.getDeltaMovement().y, player.isSprinting(), legacy)) dmg *= 1.5f;
+        dmg = Combat.afterArmor(dmg, Combat.armorPoints(bot.cfg.style), Combat.armorToughness(bot.cfg.style, legacy), legacy);
+        bot.hp = Combat.hurt(bot.hp, dmg);
+        bot.invul = 10;
         double dx = bot.entity.getX() - player.getX();
         double dz = bot.entity.getZ() - player.getZ();
         double[] v = Knockback.apply(FrostState.INSTANCE.kbProfile, bot.velocity.x, bot.velocity.y, bot.velocity.z,
@@ -220,5 +294,13 @@ public final class Bots {
         bot.velocity = new Vec3(v[0], v[1], v[2]);
         bot.entity.animateHurt(player.getYRot());
         FrostMc.sendKnockbackEvent(true);
+        if (bot.hp <= 0f) {
+            kills++;
+            FrostState.INSTANCE.notify("Frost: " + bot.cfg.name + " defeated  |  score " + kills + " - " + deaths);
+            bot.entity.setPos(bot.entity.getX(), -200, bot.entity.getZ());
+            bot.respawnIn = 40;
+        } else {
+            nameTag(bot);
+        }
     }
 }
