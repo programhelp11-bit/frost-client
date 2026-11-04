@@ -5,6 +5,7 @@
   "name": "Frost Client",
   "description": "Frost Client in-game runtime: glass HUD, QoL, trainer bots, tab snowflake.",
   "environment": "client",
+  "mixins": [ "frost_client.mixins.json" ],
   "entrypoints": { "client": [ "dev.frost.mc.Entry" ] },
   "depends": {
     "fabricloader": ">=0.16.0",
