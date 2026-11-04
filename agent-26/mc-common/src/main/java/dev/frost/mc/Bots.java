@@ -237,6 +237,7 @@ public final class Bots {
         double vy = e.onGround() && bot.velocity.y <= 0 ? 0 : (bot.velocity.y - 0.08) * 0.98;
         bot.velocity = new Vec3(vx, vy, vz);
         e.move(MoverType.SELF, bot.velocity);
+        if (e.horizontalCollision && e.onGround()) bot.velocity = new Vec3(bot.velocity.x, 0.42, bot.velocity.z); // hop over blocks
         if (e.onGround() && bot.velocity.y < 0) bot.velocity = new Vec3(bot.velocity.x, 0, bot.velocity.z);
     }
 

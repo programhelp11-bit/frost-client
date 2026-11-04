@@ -20,6 +20,17 @@ public final class CapeSkins {
 
     public static PlayerSkin apply(PlayerSkin base, String uuidNoDashes) {
         try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.player != null && mc.player.getUUID().toString().replace("-", "").equals(uuidNoDashes)) {
+                // Own cape: bundled with the mod, so it works without any server.
+                if ("none".equals(FrostState.INSTANCE.library.active_cape)) return base;
+                ClientAsset.Texture own = TEXTURES.get("own");
+                if (own == null) {
+                    own = new ClientAsset.ResourceTexture(Identifier.fromNamespaceAndPath("frost_client", "cape/frost"));
+                    TEXTURES.put("own", own);
+                }
+                return new PlayerSkin(base.body(), own, base.elytra(), base.model(), base.secure());
+            }
             Models.CosmeticEntry e = FrostState.INSTANCE.cosmetics.get(uuidNoDashes);
             if (e == null || !e.frost || e.cape_url == null || e.cape_url.isEmpty()) return base;
             String key = CapeStore.key(e.cape_url, e.cape_hash);

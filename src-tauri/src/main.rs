@@ -315,7 +315,7 @@ async fn upload_skin(st: State<'_, AppState>, png_b64: String, slim: bool) -> Re
 fn frost_base(st: &AppState) -> Result<String, String> {
     let base = st.settings.lock().unwrap().frost_api.trim().to_owned();
     if base.is_empty() {
-        Err("This build has no Frost server configured, so community capes are unavailable.".into())
+        Err("This build has no Frost server configured, so other players cannot see your cape.".into())
     } else {
         Ok(base)
     }
@@ -429,11 +429,13 @@ async fn community_upload(st: State<'_, AppState>, name: String, png_b64: String
 
 #[tauri::command]
 async fn cape_select(st: State<'_, AppState>, id: String) -> Result<(), String> {
-    let api = api(&st).await?;
-    api.select_cape(&id).await.map_err(|e| {
-        forget_api(&st);
-        err(e)
-    })?;
+    // The Frost cape works without a server; with one, other Frost players also see the choice.
+    if let Ok(api) = api(&st).await {
+        if let Err(e) = api.select_cape(&id).await {
+            forget_api(&st);
+            eprintln!("cape sync failed: {e}");
+        }
+    }
     *st.active_cape.lock().unwrap() = id;
     push_library(&st);
     Ok(())

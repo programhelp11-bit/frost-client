@@ -226,7 +226,7 @@ function libItems(kinds) {
   if (!items.length) return '<div class="muted-note">Nothing saved yet.</div>';
   return items.map(i => `<div class="lib-item">
       <canvas width="${i.kind === 'skin' ? 32 : 20}" height="32" data-thumb="${i.id}" data-kind="${i.kind}"></canvas>
-      <div class="nm"><b>${esc(i.name)}</b><small>${i.kind === 'skin' ? (i.slim ? 'Slim' : 'Classic') + ' skin' : i.kind === 'fav' ? 'Community cape' : 'My cape'}</small></div>
+      <div class="nm"><b>${esc(i.name)}</b><small>${i.kind === 'skin' ? (i.slim ? 'Slim' : 'Classic') + ' skin' : i.kind === 'fav' ? 'Cape' : 'Cape'}</small></div>
       <div class="acts">
         ${i.kind === 'skin' ? `<button class="btn ghost sm" data-act="st-lib-apply" data-id="${i.id}">Wear</button>` : ''}
         ${i.kind !== 'fav' ? `<button class="btn ghost sm" data-act="st-lib-edit" data-id="${i.id}" data-kind="${i.kind}">Edit</button>` : ''}
@@ -263,78 +263,18 @@ function pageSkinEditor() {
   </div>`;
 }
 
-function pageCapeEditor() {
-  if (!S.st.account) return needAccount('Cape editor');
-  const ed = stu.cape;
-  return `<h1 class="page-title">Cape editor</h1><div class="page-sub">Draw the back of your cape. Only Frost Client players can see it; publish it to the community gallery so others can wear it too.</div>
-  <div class="studio">
-    <section class="card glass ed">
-      ${toolbar('cape')}
-      <div class="ed-wrap cape"><canvas id="ed-cape" width="${10 * SCALE.cape}" height="${16 * SCALE.cape}"></canvas></div>
-      <div class="line"><div class="seg"><button data-act="ct-preset" data-p="frost">Frost</button><button data-act="ct-preset" data-p="aurora">Aurora</button><button data-act="ct-preset" data-p="ember">Ember</button></div><div class="grow"></div>
-        <button class="btn ghost sm" data-act="st-import" data-ed="cape">Import PNG</button>
-        <button class="btn ghost sm" data-act="st-clear" data-ed="cape">Clear</button></div>
-    </section>
-    <aside class="card glass side">
-      <h3>Preview</h3>
-      <div class="pv"><canvas id="pv-cape" width="128" height="256"></canvas></div>
-      <input class="field" data-bind="st-name-cape" value="${esc(ed.name)}" maxlength="24" placeholder="Cape name (3-24 characters)">
-      <div class="line"><button class="btn ghost" data-act="st-save-cape">Save to library</button><button class="btn" data-act="ct-publish">Publish &amp; wear</button></div>
-      <p class="muted-note">Publishing adds it to the community gallery under your name. You can delete your own capes there.</p>
-      <h3 style="margin-top:18px">My capes</h3>
-      <div class="lib" id="lib-capes">${libItems(['cape', 'fav'])}</div>
-    </aside>
+/* ---------------------------------------------------------------- Frost cape */
+function pageCosmetics() {
+  if (!S.st.account) return needAccount('Frost cape');
+  const on = stu.gal.active !== 'none';
+  return `<h1 class="page-title">Frost cape</h1>
+  <div class="page-sub">Every Frost Client player gets the Frost cape for free. Only players using Frost Client can see it.</div>
+  <div class="ccard glass ${on ? 'worn' : ''}" style="max-width:260px">
+    <div class="cthumb" style="background-image:url('frost-cape.png')"></div>
+    <b>Frost cape</b><small>Free for everyone</small>
+    <div class="acts"><button class="btn ${on ? 'ghost' : ''} sm" data-act="cape-toggle">${on ? 'Wearing - take off' : 'Wear'}</button></div>
   </div>`;
 }
-
-/* ---------------------------------------------------------------- community gallery */
-function pageCosmetics() {
-  if (!S.st.account) return needAccount('Capes');
-  const G = stu.gal;
-  const head = `<h1 class="page-title">Capes</h1><div class="page-sub">Frost-exclusive capes: only players using Frost Client see them. Pick one, or publish your own from the Cape editor.</div>
-  <div class="line" style="margin-bottom:16px"><div class="seg"><button class="${G.sort === 'new' ? 'on' : ''}" data-act="gal-sort" data-s="new">Newest</button><button class="${G.sort === 'popular' ? 'on' : ''}" data-act="gal-sort" data-s="popular">Popular</button></div>
-    <div class="grow"></div><button class="btn ghost sm" data-act="gal-refresh">Refresh</button></div>`;
-  return head + `<div id="gal">${galBody()}</div>`;
-}
-
-function capeThumb(url) {
-  return `<div class="cthumb" style="background-image:url('${esc(url)}')"></div>`;
-}
-
-function galBody() {
-  const G = stu.gal;
-  if (G.error) return `<div class="empty">${esc(G.error)}</div>`;
-  if (!G.page) return `<div class="empty">${G.loading ? 'Loading capes…' : 'No capes yet.'}</div>`;
-  const me = S.st.account.username;
-  const cards = G.page.capes.map(c => {
-    const worn = G.active === c.id, fav = G.favs.includes(c.id);
-    return `<div class="ccard glass ${worn ? 'worn' : ''}">
-      ${capeThumb(c.url)}
-      <b>${esc(c.name)}</b><small>${esc(c.author)} · ${c.users} wearing</small>
-      <div class="acts"><button class="btn ${worn ? 'ghost' : ''} sm" data-act="gal-wear" data-id="${c.id}" ${worn ? 'disabled' : ''}>${worn ? 'Wearing' : 'Wear'}</button>
-        <button class="btn ghost sm ${fav ? 'on' : ''}" data-act="gal-fav" data-id="${c.id}" data-name="${esc(c.name)}" data-url="${esc(c.url)}" title="Show in the X wheel in game">${fav ? '★' : '☆'}</button>
-        ${!c.builtin && c.author === me ? `<button class="btn ghost sm danger" data-act="gal-del" data-id="${c.id}">✕</button>` : ''}</div></div>`;
-  }).join('');
-  const total = G.page.total, per = 24;
-  const pager = total > per ? `<div class="line" style="margin-top:16px;justify-content:center">
-      <button class="btn ghost sm" data-act="gal-page" data-d="-1" ${G.offset <= 0 ? 'disabled' : ''}>Previous</button>
-      <span style="color:var(--ink-3)">${G.offset + 1}–${Math.min(total, G.offset + G.page.capes.length)} of ${total}</span>
-      <button class="btn ghost sm" data-act="gal-page" data-d="1" ${G.offset + per >= total ? 'disabled' : ''}>Next</button></div>` : '';
-  return `<div class="cgrid">${cards}</div>${pager}`;
-}
-
-async function galLoad() {
-  const G = stu.gal;
-  G.loading = true; G.error = '';
-  refreshGal();
-  try {
-    const r = await inv('community_list', { offset: G.offset, sort: G.sort });
-    G.page = r; G.favs = r.favorites || []; G.active = r.active || G.active; G.loaded = true;
-  } catch (e) { G.error = String(e); G.page = null; }
-  G.loading = false;
-  refreshGal();
-}
-function refreshGal() { const el = document.getElementById('gal'); if (el) el.innerHTML = galBody(); }
 
 /* ---------------------------------------------------------------- library */
 async function libLoad() {
@@ -367,8 +307,8 @@ let stroke = null;
 
 function studioMount() {
   if (!S.st || !S.st.account) return;
-  if (S.page === 'skinedit' || S.page === 'capeedit') {
-    const kind = S.page === 'skinedit' ? 'skin' : 'cape';
+  if (S.page === 'skinedit') {
+    const kind = 'skin';
     const cv = document.getElementById('ed-' + kind);
     if (cv && !cv._wired) {
       cv._wired = true;
@@ -380,8 +320,6 @@ function studioMount() {
     }
     drawEditor(kind);
     libLoad();
-  } else if (S.page === 'cosmetics') {
-    galLoad();
   }
 }
 
@@ -468,22 +406,6 @@ const STUDIO_ACTIONS = {
       toast('Skin updated on your account', 'ok');
     } catch (e) { toast(e, 'err'); }
   },
-  'st-save-cape': async () => {
-    try {
-      await inv('lib_save', { kind: 'cape', name: stu.cape.name || 'My cape', pngB64: capeB64(), slim: false });
-      toast('Saved to your library', 'ok'); await libLoad();
-    } catch (e) { toast(e, 'err'); }
-  },
-  'ct-preset': el => applyPreset(el.dataset.p),
-  'ct-publish': async () => {
-    try {
-      const name = (stu.cape.name || '').trim();
-      const id = await inv('community_upload', { name, pngB64: capeB64() });
-      await inv('cape_select', { id });
-      stu.gal.active = id;
-      toast('Published — you are wearing it now', 'ok');
-    } catch (e) { toast(e, 'err'); }
-  },
   'st-lib-edit': async el => {
     try {
       const b64 = await inv('lib_png', { id: el.dataset.id }), kind = el.dataset.kind === 'skin' ? 'skin' : 'cape';
@@ -504,22 +426,9 @@ const STUDIO_ACTIONS = {
   'st-lib-del': async el => {
     try { await inv('lib_delete', { id: el.dataset.id }); delete stu.thumbs[el.dataset.id]; await libLoad(); } catch (e) { toast(e, 'err'); }
   },
-  'gal-sort': el => { stu.gal.sort = el.dataset.s; stu.gal.offset = 0; renderView(); },
-  'gal-refresh': () => galLoad(),
-  'gal-page': el => { stu.gal.offset = Math.max(0, stu.gal.offset + 24 * +el.dataset.d); galLoad(); },
-  'gal-wear': async el => {
-    try { await inv('cape_select', { id: el.dataset.id }); stu.gal.active = el.dataset.id; toast('Cape changed', 'ok'); refreshGal(); }
+  'cape-toggle': async () => {
+    const next = stu.gal.active === 'none' ? 'frost' : 'none';
+    try { await inv('cape_select', { id: next }); stu.gal.active = next; toast(next === 'none' ? 'Cape taken off' : 'Frost cape on', 'ok'); renderView(); }
     catch (e) { toast(e, 'err'); }
-  },
-  'gal-fav': async el => {
-    const id = el.dataset.id, on = !stu.gal.favs.includes(id);
-    try {
-      await inv('cape_favorite', { id, name: el.dataset.name, url: el.dataset.url, on });
-      stu.gal.favs = on ? [...stu.gal.favs, id] : stu.gal.favs.filter(f => f !== id);
-      refreshGal();
-    } catch (e) { toast(e, 'err'); }
-  },
-  'gal-del': async el => {
-    try { await inv('cape_delete', { id: el.dataset.id }); toast('Cape deleted', 'ok'); galLoad(); } catch (e) { toast(e, 'err'); }
   },
 };

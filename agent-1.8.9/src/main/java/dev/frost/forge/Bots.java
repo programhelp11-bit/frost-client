@@ -204,6 +204,7 @@ public final class Bots {
         bot.vz = bot.vz * 0.6 + iz * 0.4;
         bot.vy = e.onGround && bot.vy <= 0 ? 0 : (bot.vy - 0.08) * 0.98;
         e.moveEntity(bot.vx, bot.vy, bot.vz);
+        if (e.isCollidedHorizontally && e.onGround) bot.vy = 0.42; // hop over blocks
         if (e.onGround && bot.vy < 0) bot.vy = 0;
     }
 

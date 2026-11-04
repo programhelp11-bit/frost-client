@@ -111,7 +111,7 @@ function render() {
     skinedit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 20l4-1L19 8l-3-3L5 16z"/><path d="M14 7l3 3"/></svg>',
     capeedit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M8 4h8l3 4-2 12H7L5 8z"/><path d="M9 4c0 2 6 2 6 0"/></svg>',
   };
-  const nav = [['home', 'Home'], ['versions', 'Versions'], ['browse', 'Browse'], ['cosmetics', 'Capes'], ['skinedit', 'Skin editor'], ['capeedit', 'Cape editor']];
+  const nav = [['home', 'Home'], ['versions', 'Versions'], ['browse', 'Browse'], ['cosmetics', 'Cape'], ['skinedit', 'Skin editor']];
   $('#app').innerHTML = `
     <div class="shell">
       <aside class="rail">
@@ -137,7 +137,7 @@ function render() {
 function renderView() {
   const v = $('#view');
   if (!v) return;
-  const pages = { home: pageHome, versions: pageVersions, browse: pageBrowse, cosmetics: pageCosmetics, skinedit: pageSkinEditor, capeedit: pageCapeEditor, settings: pageSettings };
+  const pages = { home: pageHome, versions: pageVersions, browse: pageBrowse, cosmetics: pageCosmetics, skinedit: pageSkinEditor, settings: pageSettings };
   v.innerHTML = pages[S.page]();
   if (typeof studioMount === 'function') studioMount();
   if (S.page === 'browse') browseLoadIfNeeded();
