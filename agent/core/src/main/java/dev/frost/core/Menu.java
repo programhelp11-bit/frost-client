@@ -98,14 +98,15 @@ public final class Menu {
         clicked = down && !wasDown;
         wasDown = down;
 
-        c.fill(0, 0, sw, sh, 0x8C040A1C);
+        backdrop(c, sw, sh);
         int w = Math.min(sw - 24, 620);
         int h = Math.min(sh - 24, 340);
         int x = (sw - w) / 2;
         int y = (sh - h) / 2;
         int sb = 132;
-        card(c, x, y, w, h, 0xF4070F26, 0x4A8CBEFF);
-        c.fill(x + 1, y + 1, x + sb, y + h - 1, 0xFF050B1E);
+        card(c, x, y, w, h, 0xC0081634, 0x4A8CBEFF);
+        c.fill(x + 1, y + 1, x + w - 1, y + 3, 0x14BFE6FF);
+        c.fill(x + 1, y + 1, x + sb, y + h - 1, 0xDD050B1E);
         c.fill(x + sb, y + 1, x + sb + 1, y + h - 1, LINE);
 
         // brand
@@ -167,6 +168,57 @@ public final class Menu {
             int mw = c.width(message) + 18;
             card(c, (sw - mw) / 2, y + h + 4 > sh - 24 ? sh - 24 : y + h + 4, mw, 18, 0xF0070F26, 0x4A8CBEFF);
             c.text(message, (sw - mw) / 2 + 9, (y + h + 4 > sh - 24 ? sh - 24 : y + h + 4) + 5, ACCENT);
+        }
+    }
+
+    // ---------------------------------------------------------------- backdrop
+
+    private static int argb(int a, int r, int g, int b) {
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
+    private static void glow(Canvas c, int cx, int cy, int rx, int ry, int rgb, int maxAlpha) {
+        int rings = 9;
+        int each = Math.max(2, maxAlpha / rings);
+        for (int i = 0; i < rings; i++) {
+            double k = 1.0 - (double) i / rings;
+            int hx = (int) (rx * k), hy = (int) (ry * k);
+            if (hy < 2) break;
+            int col = (each << 24) | (rgb & 0xFFFFFF);
+            for (int y = -hy; y < hy; y += 3) {
+                double q = (double) y / hy;
+                int w = (int) (hx * Math.sqrt(Math.max(0, 1 - q * q)));
+                c.fill(cx - w, cy + y, cx + w, Math.min(cy + y + 3, cy + hy), col);
+            }
+        }
+    }
+
+    /** The launcher's night sky: deep blue gradient, soft aurora glows, mountain ridges, drifting snow. */
+    public static void backdrop(Canvas c, int sw, int sh) {
+        for (int y = 0; y < sh; y += 3) {
+            double t = (double) y / sh;
+            c.fill(0, y, sw, Math.min(sh, y + 3), argb(0xE8, (int) (11 - 6 * t), (int) (28 - 18 * t), (int) (69 - 46 * t)));
+        }
+        glow(c, (int) (sw * 0.78), (int) (sh * 0.05), (int) (sw * 0.42), (int) (sh * 0.5), 0x2A56FF, 0x52);
+        glow(c, (int) (sw * 0.18), (int) (sh * 0.98), (int) (sw * 0.36), (int) (sh * 0.42), 0x2FB6FF, 0x3A);
+        glow(c, (int) (sw * 0.55), (int) (sh * 0.92), (int) (sw * 0.4), (int) (sh * 0.3), 0x6A4DFF, 0x30);
+        // mountain ridges
+        for (int x = 0; x < sw; x += 6) {
+            double a = Math.sin(x * 0.021) * 0.5 + Math.sin(x * 0.047 + 1.3) * 0.3 + Math.sin(x * 0.009) * 0.6;
+            int h1 = (int) (sh * (0.17 + 0.07 * a));
+            double b = Math.sin(x * 0.033 + 2.1) * 0.5 + Math.sin(x * 0.015 + 0.4) * 0.5;
+            int h2 = (int) (sh * (0.09 + 0.05 * b));
+            c.fill(x, sh - h1, x + 6, sh, 0x8C071331);
+            c.fill(x, sh - h2, x + 6, sh, 0xCC050D22);
+        }
+        // snow
+        long t = System.currentTimeMillis();
+        for (int i = 0; i < 28; i++) {
+            double sp = 5 + (i * 7 % 11);
+            int x = (int) ((i * 97 + Math.sin(t / 1400.0 + i) * 6 + sw * 4) % sw);
+            int y = (int) (((i * 53) % sh + t / 1000.0 * sp) % sh);
+            if (i % 4 == 0) snowflake(c, x, y, 0xA0BFE6FF);
+            else c.fill(x, y, x + 1, y + 1, 0x90DCEBFF);
         }
     }
 
