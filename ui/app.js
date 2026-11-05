@@ -109,9 +109,10 @@ function render() {
     browse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg>',
     cosmetics: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m12 3 2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.4 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/></svg>',
     skinedit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 20l4-1L19 8l-3-3L5 16z"/><path d="M14 7l3 3"/></svg>',
+    perf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M13 3 5 13h6l-1 8 8-10h-6z"/></svg>',
     capeedit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M8 4h8l3 4-2 12H7L5 8z"/><path d="M9 4c0 2 6 2 6 0"/></svg>',
   };
-  const nav = [['home', 'Home'], ['versions', 'Versions'], ['browse', 'Browse'], ['cosmetics', 'Cape'], ['skinedit', 'Skin editor'], ['capeedit', 'Cape editor']];
+  const nav = [['home', 'Home'], ['versions', 'Versions'], ['browse', 'Browse'], ['cosmetics', 'Cape'], ['skinedit', 'Skin editor'], ['capeedit', 'Cape editor'], ['perf', 'Performance']];
   $('#app').innerHTML = `
     <div class="shell">
       <aside class="rail">
@@ -137,7 +138,7 @@ function render() {
 function renderView() {
   const v = $('#view');
   if (!v) return;
-  const pages = { home: pageHome, versions: pageVersions, browse: pageBrowse, cosmetics: pageCosmetics, skinedit: pageSkinEditor, capeedit: pageCapeEditor, settings: pageSettings };
+  const pages = { home: pageHome, versions: pageVersions, browse: pageBrowse, cosmetics: pageCosmetics, skinedit: pageSkinEditor, capeedit: pageCapeEditor, perf: pagePerf, settings: pageSettings };
   v.innerHTML = pages[S.page]();
   if (typeof studioMount === 'function') studioMount();
   if (S.page === 'browse') browseLoadIfNeeded();
@@ -210,7 +211,6 @@ function pageVersions() {
         <p>${esc(m.note || '')} Mods you install from Browse land in this version's own folder.</p>
         <div class="acts">
           ${S.st.account ? `<button class="btn" data-act="launch" data-v="${S.sel}">Launch</button>` : `<button class="btn" data-act="login">Sign in</button>`}
-          ${S.sel === '1.8.9' ? '' : `<button class="btn ghost" data-act="perf-pack" title="Sodium, Lithium, FerriteCore, Entity Culling, ImmediatelyFast, ModernFix">Performance pack</button>`}
           <button class="ico" data-act="goto-browse" title="Browse mods">${ICON.search}</button>
           <button class="ico" data-act="open-inst" title="Open folder">${ICON.folder}</button>
         </div>
@@ -299,10 +299,42 @@ async function mrSearch() {
   if (token === M.token) { M.loading = false; refreshMr(); }
 }
 
+
+/* ------------------------------------------------------------------ performance */
+function pagePerf() {
+  const c = S.cfg, v = S.sel, P = (S.perf && S.perf[v]) || null, fabric = loaderOf(v) === 'Fabric';
+  if (!P && fabric) perfLoad(v);
+  const grp = (key, title, desc, mods) => {
+    const on = P && P[key], busy = S.perfBusy === key;
+    return setRow(title, `${desc}<br><span class="mods">${mods}</span>`,
+      busy ? '<span class="spin"></span>' : (!fabric ? '<span class="pill"><i></i>Fabric only</span>'
+        : `<span class="pill ${on ? 'ok' : ''}"><i></i>${on ? 'Installed' : 'Off'}</span><button class="btn ${on ? 'ghost' : ''} sm" data-act="perf-group" data-g="${key}" data-on="${on ? 0 : 1}">${on ? 'Remove' : 'Install'}</button>`));
+  };
+  const vers = S.st.instances.map(i => `<button class="${v === i.id ? 'on' : ''}" data-act="perf-ver" data-v="${i.id}">${esc(i.id)}</button>`).join('');
+  return `<h1 class="page-title">Performance</h1>
+    <div class="page-sub">More frames without touching your settings by hand. Pick a version, then switch things on.</div>
+    <div class="line" style="margin-bottom:6px"><div class="seg">${vers}</div></div>
+    ${setGroup('BUILT-IN',
+      setRow('Auto FPS boost', 'Before each launch: fast graphics, no clouds or shadows, no vsync, render distance 8. Works on every version.', tog('auto_optimize', c.auto_optimize !== false)),
+      setRow('Vulkan renderer', 'Minecraft 26.2 only. Asks the game for its experimental Vulkan backend, and falls back to OpenGL on GPUs without Vulkan.', tog('perf_vulkan', !!c.perf_vulkan)))}
+    ${setGroup('FAST MODS' + (fabric ? '' : ' (FABRIC VERSIONS)'),
+      grp('renderer', 'Fast renderer', 'Much faster chunk and entity drawing.', 'Sodium · ImmediatelyFast · Entity Culling'),
+      grp('logic', 'Fast math &amp; logic', 'Quicker game logic, collision, lighting math and lower memory use.', 'Lithium · FerriteCore · ModernFix'))}
+    ${fabric ? '' : '<p class="muted-note">1.8.9 has no Fabric mods; it gets the built-in boost and the in-game Performance tab (Right Shift).</p>'}`;
+}
+
+async function perfLoad(v) {
+  S.perf = S.perf || {};
+  S.perf[v] = { renderer: false, logic: false, loading: true };
+  try { S.perf[v] = await inv('perf_status', { mc: v }); } catch (e) { S.perf[v] = { renderer: false, logic: false }; }
+  if (S.page === 'perf') renderView();
+}
+
 /* ------------------------------------------------------------------ settings */
 function setRow(title, desc, ctl) {
-  return `<div class="set-row glass"><div class="t"><b>${title}</b><small>${desc}</small></div>${ctl}</div>`;
+  return `<div class="set-row"><div class="t"><b>${title}</b><small>${desc}</small></div><div class="ctl">${ctl}</div></div>`;
 }
+const setGroup = (title, ...rows) => `<div class="set-sec">${title}</div><div class="set-card glass">${rows.join('')}</div>`;
 const tog = (key, on) => `<div class="toggle ${on ? 'on' : ''}" data-act="cfg-toggle" data-k="${key}"></div>`;
 
 function pageSettings() {
@@ -310,29 +342,28 @@ function pageSettings() {
   let body = '';
   const T = S.settingsTab;
   if (T === 'launcher') {
-    body = `<div class="set-sec">GENERAL</div>
-      ${setRow('Auto FPS boost', 'Before each launch: fast graphics, lower render distance, no clouds/shadows/vsync. Works without any mods.', tog('auto_optimize', c.auto_optimize !== false))}
-      ${setRow('Falling snow', 'Little snowflakes drifting over the launcher.', tog('snow', c.snow))}
-      ${setRow('While playing', 'What the launcher window does once the game is running.', `<select class="field" data-bind="while">${[['keep', 'Keep visible'], ['hide', 'Hide launcher']].map(([v, l]) => `<option value="${v}" ${c.while_playing === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`)}`;
+    body = setGroup('GENERAL',
+      setRow('Falling snow', 'Little snowflakes drifting over the launcher.', tog('snow', c.snow)),
+      setRow('While playing', 'What the launcher window does once the game is running.', `<select class="field" data-bind="while">${[['keep', 'Keep visible'], ['hide', 'Hide launcher']].map(([v, l]) => `<option value="${v}" ${c.while_playing === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`));
   } else if (T === 'java') {
-    body = `<div class="set-sec">MEMORY</div>
-      ${setRow('Maximum RAM', 'Heap size given to Minecraft.', `<input type="range" min="1024" max="16384" step="256" value="${c.ram_mb}" data-bind="ram"><span class="val" id="v-ram">${(c.ram_mb / 1024).toFixed(1)} GB</span>`)}
-      <div class="set-sec">JAVA</div>
-      ${setRow('Java executable', 'Leave empty — Frost downloads the right Java automatically.', `<input class="field" style="width:320px;user-select:text" placeholder="automatic" value="${esc(c.java_path)}" data-bind="java">`)}
-      ${setRow('JVM arguments', 'Extra flags, separated by spaces.', `<input class="field" style="width:420px;user-select:text" value="${esc(c.jvm_args)}" data-bind="jvm">`)}`;
+    body = setGroup('MEMORY',
+      setRow('Maximum RAM', 'Heap size given to Minecraft.', `<input type="range" min="1024" max="16384" step="256" value="${c.ram_mb}" data-bind="ram"><span class="val" id="v-ram">${(c.ram_mb / 1024).toFixed(1)} GB</span>`)) +
+      setGroup('JAVA',
+      setRow('Java executable', 'Leave empty — Frost downloads the right Java automatically.', `<input class="field" style="width:320px;user-select:text" placeholder="automatic" value="${esc(c.java_path)}" data-bind="java">`),
+      setRow('JVM arguments', 'Extra flags, separated by spaces.', `<input class="field" style="width:420px;user-select:text" value="${esc(c.jvm_args)}" data-bind="jvm">`));
   } else if (T === 'storage') {
-    body = `<div class="set-sec">FOLDERS AND FILES</div>
-      ${setRow('Launcher folder', esc(S.st.data_dir), `<button class="btn ghost sm" data-act="open-data">${ICON.folder} Open</button>`)}`;
+    body = setGroup('FOLDERS AND FILES',
+      setRow('Launcher folder', esc(S.st.data_dir), `<button class="btn ghost sm" data-act="open-data">${ICON.folder} Open</button>`));
   } else if (T === 'accounts') {
     const a = S.st.account;
-    body = `<div class="set-sec">MICROSOFT ACCOUNT</div>
-      ${a ? setRow(esc(a.username), 'Signed in', `<button class="btn danger sm" data-act="logout">Sign out</button>`)
-        : setRow('Not signed in', 'One click opens the official Microsoft login in your browser.', `<button class="btn sm" data-act="login">Sign in</button>`)}`;
+    body = setGroup('MICROSOFT ACCOUNT',
+      a ? setRow(esc(a.username), 'Signed in', `<button class="btn danger sm" data-act="logout">Sign out</button>`)
+        : setRow('Not signed in', 'One click opens the official Microsoft login in your browser.', `<button class="btn sm" data-act="login">Sign in</button>`));
   } else {
-    body = `<div class="set-sec">FROST CLIENT</div>
-      ${setRow('Version', esc(S.st.os), `<span class="val">v${esc(S.st.app_version)}</span>`)}
-      <div class="set-sec">IN-GAME MOD</div>
-      ${S.st.instances.map(i => setRow(`${i.id} · ${i.loader}`, 'Frost HUD, trainer and tab snowflake', `<span class="pill ${i.has_mod ? 'ok' : ''}"><i></i>${i.has_mod ? 'Bundled' : 'Not bundled'}</span>`)).join('')}`;
+    body = setGroup('FROST CLIENT',
+      setRow('Version', esc(S.st.os), `<span class="val">v${esc(S.st.app_version)}</span>`)) +
+      setGroup('IN-GAME MOD',
+      ...S.st.instances.map(i => setRow(`${i.id} · ${i.loader}`, 'Frost HUD, trainer and tab snowflake', `<span class="pill ${i.has_mod ? 'ok' : ''}"><i></i>${i.has_mod ? 'Bundled' : 'Not bundled'}</span>`)));
   }
   return `<div class="settings">
     <aside class="side">${tabs.map(([k, l]) => `<button class="${T === k ? 'on' : ''}" data-act="set-tab" data-t="${k}">${l}</button>`).join('')}</aside>
@@ -383,14 +414,16 @@ const ACTIONS = {
   },
   'goto-settings-mc': () => { S.page = 'settings'; S.settingsTab = 'java'; render(); },
   'goto-browse': () => { S.page = 'browse'; S.mr.mc = S.sel; S.mr.page = null; render(); },
-  'perf-pack': async () => {
-    toast('Installing performance mods…', 'ok');
+  'perf-ver': el => { S.sel = el.dataset.v; renderView(); },
+  'perf-group': async el => {
+    const g = el.dataset.g, on = el.dataset.on === '1';
+    S.perfBusy = g; renderView();
     try {
-      const r = await inv('install_perf_pack', { mc: S.sel });
-      const ok = r.filter(x => x.ok).map(x => x.mod), bad = r.filter(x => !x.ok).map(x => x.mod);
-      toast(`Installed: ${ok.join(', ') || 'none'}${bad.length ? ` · no build for ${S.sel}: ${bad.join(', ')}` : ''}`, bad.length && !ok.length ? 'err' : 'ok');
-      inv('get_state').then(s => { S.st.instances = s.instances; renderView(); }).catch(() => {});
+      const r = await inv('perf_group', { mc: S.sel, group: g, on });
+      const bad = r.filter(x => !x.ok).map(x => x.mod);
+      toast(bad.length ? `No build for ${S.sel}: ${bad.join(', ')}` : (on ? 'Installed' : 'Removed'), bad.length === r.length && r.length ? 'err' : 'ok');
     } catch (e) { toast(e, 'err'); }
+    S.perfBusy = null; await perfLoad(S.sel);
   },
   'open-inst': () => inv('open_instance_folder', { mc: S.sel }).catch(e => toast(e, 'err')),
   'open-data': () => inv('open_data_folder').catch(e => toast(e, 'err')),

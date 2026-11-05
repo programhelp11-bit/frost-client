@@ -167,7 +167,7 @@ pub async fn prepare(
     extract_natives(native_jars, natives_dir.clone()).await?;
 
     if settings.auto_optimize {
-        let _ = crate::optimize::apply(&game_dir, version_id);
+        let _ = crate::optimize::apply(&game_dir, version_id, settings.perf_vulkan);
     }
 
     // --- arguments -----------------------------------------------------------------------------

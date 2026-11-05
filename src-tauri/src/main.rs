@@ -642,20 +642,54 @@ async fn mr_install(st: State<'_, AppState>, project_id: String, mc: String) -> 
     serde_json::to_value(added).map_err(err)
 }
 
-/// Performance mods from Modrinth (Fabric versions only). Failures are reported per mod, so a
-/// mod that has no build for this Minecraft version does not abort the rest.
+const PERF_GROUPS: [(&str, &[&str]); 2] = [
+    ("renderer", &["sodium", "immediatelyfast", "entityculling"]),
+    ("logic", &["lithium", "ferrite-core", "modernfix"]),
+];
+
+fn perf_slugs(group: &str) -> Option<&'static [&'static str]> {
+    PERF_GROUPS.iter().find(|(g, _)| *g == group).map(|(_, s)| *s)
+}
+
+/// Which performance mod groups are installed for a version.
 #[tauri::command]
-async fn install_perf_pack(st: State<'_, AppState>, mc: String) -> Result<Value, String> {
+fn perf_status(mc: String) -> Value {
+    let installed = modrinth::list_installed(&mc);
+    let has = |slugs: &[&str]| slugs.iter().all(|s| installed.iter().any(|i| i.slug == *s));
+    let any = |slugs: &[&str]| slugs.iter().any(|s| installed.iter().any(|i| i.slug == *s));
+    json!({
+        "fabric": modrinth::loader_name(&mc) == "fabric",
+        "renderer": has(perf_slugs("renderer").unwrap()),
+        "renderer_any": any(perf_slugs("renderer").unwrap()),
+        "logic": has(perf_slugs("logic").unwrap()),
+        "logic_any": any(perf_slugs("logic").unwrap()),
+    })
+}
+
+/// Install or remove one group of performance mods (Fabric versions only). Failures are reported
+/// per mod, so a mod without a build for this Minecraft version does not abort the rest.
+#[tauri::command]
+async fn perf_group(st: State<'_, AppState>, mc: String, group: String, on: bool) -> Result<Value, String> {
     if !versions::SUPPORTED.contains(&mc.as_str()) {
         return Err(format!("Unsupported version {mc}"));
     }
     if modrinth::loader_name(&mc) != "fabric" {
-        return Err("The performance pack is for the Fabric versions; 1.8.9 uses Frost's built-in optimizations".into());
+        return Err("These are Fabric mods. Minecraft 1.8.9 uses Frost's built-in optimizations instead.".into());
     }
+    let slugs = perf_slugs(&group).ok_or("unknown group")?;
     let mut results = Vec::new();
-    for slug in ["sodium", "lithium", "ferrite-core", "entityculling", "immediatelyfast", "modernfix"] {
-        let r = modrinth::install(&st.http, slug, &mc, Arc::new(Progress::default())).await;
-        results.push(json!({ "mod": slug, "ok": r.is_ok(), "error": r.err().map(|e| e.to_string()) }));
+    if on {
+        for slug in slugs {
+            let r = modrinth::install(&st.http, slug, &mc, Arc::new(Progress::default())).await;
+            results.push(json!({ "mod": slug, "ok": r.is_ok(), "error": r.err().map(|e| e.to_string()) }));
+        }
+    } else {
+        for item in modrinth::list_installed(&mc) {
+            if slugs.contains(&item.slug.as_str()) {
+                let r = modrinth::remove(&mc, &item.project_id);
+                results.push(json!({ "mod": item.slug, "ok": r.is_ok(), "error": r.err().map(|e| e.to_string()) }));
+            }
+        }
     }
     Ok(Value::Array(results))
 }
@@ -777,7 +811,8 @@ fn main() {
             bedwars_bridge,
             mr_search,
             mr_install,
-            install_perf_pack,
+            perf_status,
+            perf_group,
             mr_installed,
             mr_remove,
             open_instance_folder,

@@ -61,6 +61,8 @@ pub struct Settings {
     pub snow: bool,
     /// Rewrite performance keys in options.txt before every launch (mod-free FPS boost).
     pub auto_optimize: bool,
+    /// Ask Minecraft 26.2+ for its experimental Vulkan renderer.
+    pub perf_vulkan: bool,
 }
 
 impl Default for Settings {
@@ -79,6 +81,7 @@ impl Default for Settings {
             while_playing: "keep".into(),
             snow: true,
             auto_optimize: true,
+            perf_vulkan: false,
         }
     }
 }

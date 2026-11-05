@@ -42,7 +42,7 @@ fn is_legacy(version_id: &str) -> bool {
 }
 
 /// Pure transformation of an `options.txt` body (testable without touching the disk).
-pub fn optimize_options(existing: &str, version_id: &str) -> String {
+pub fn optimize_options(existing: &str, version_id: &str, vulkan: bool) -> String {
     let mut lines: Vec<String> = existing.lines().map(str::to_owned).collect();
     let set: &[(&str, &str)] = if is_legacy(version_id) { LEGACY } else { MODERN };
     let upsert = |lines: &mut Vec<String>, key: &str, value: String| {
@@ -54,6 +54,10 @@ pub fn optimize_options(existing: &str, version_id: &str) -> String {
     };
     for (k, v) in set {
         upsert(&mut lines, k, (*v).to_owned());
+    }
+    if vulkan && version_id.starts_with("26.2") {
+        // Experimental Vulkan backend (26.2+). The game falls back to OpenGL if the GPU lacks Vulkan.
+        upsert(&mut lines, "preferredGraphicsBackend", "\"vulkan\"".to_owned());
     }
     for (k, cap) in CAPS {
         if *k == "simulationDistance" && is_legacy(version_id) {
@@ -75,10 +79,10 @@ pub fn optimize_options(existing: &str, version_id: &str) -> String {
 }
 
 /// Applies the profile to `<game_dir>/options.txt` (created when missing). Errors are ignored by callers.
-pub fn apply(game_dir: &Path, version_id: &str) -> std::io::Result<()> {
+pub fn apply(game_dir: &Path, version_id: &str, vulkan: bool) -> std::io::Result<()> {
     let path = game_dir.join("options.txt");
     let existing = std::fs::read_to_string(&path).unwrap_or_default();
-    std::fs::write(&path, optimize_options(&existing, version_id))
+    std::fs::write(&path, optimize_options(&existing, version_id, vulkan))
 }
 
 #[cfg(test)]
@@ -87,7 +91,7 @@ mod tests {
 
     #[test]
     fn modern_sets_graphics_and_keeps_other_keys() {
-        let out = optimize_options("lang:hu_hu\nrenderDistance:16\nfancyGraphics:true\n", "1.21.10");
+        let out = optimize_options("lang:hu_hu\nrenderDistance:16\nfancyGraphics:true\n", "1.21.10", false);
         assert!(out.contains("lang:hu_hu"));
         assert!(out.contains("renderDistance:8"));
         assert!(out.contains("graphicsMode:0"));
@@ -98,14 +102,21 @@ mod tests {
 
     #[test]
     fn lower_render_distance_is_kept() {
-        let out = optimize_options("renderDistance:5\n", "1.21.11");
+        let out = optimize_options("renderDistance:5\n", "1.21.11", false);
         assert!(out.contains("renderDistance:5"));
         assert!(!out.contains("renderDistance:8"));
     }
 
     #[test]
+    fn vulkan_only_on_26_2() {
+        assert!(optimize_options("", "26.2", true).contains("preferredGraphicsBackend:\"vulkan\""));
+        assert!(!optimize_options("", "26.1.2", true).contains("preferredGraphicsBackend"));
+        assert!(!optimize_options("", "26.2", false).contains("preferredGraphicsBackend"));
+    }
+
+    #[test]
     fn legacy_uses_old_keys() {
-        let out = optimize_options("", "1.8.9");
+        let out = optimize_options("", "1.8.9", false);
         assert!(out.contains("ao:0"));
         assert!(out.contains("clouds:false"));
         assert!(!out.contains("graphicsMode"));

@@ -310,3 +310,12 @@ input.field{background-color:#0d1b40;color:var(--ink)}
 .cthumb{width:100px;height:160px;margin-bottom:8px;border-radius:8px;image-rendering:pixelated;background-color:rgba(5,10,23,.5);background-size:640px 320px;background-position:-10px -10px;background-repeat:no-repeat}
 .btn.on{background:var(--ice);color:#0b1b3a}
 @media (max-width:1000px){.studio{grid-template-columns:1fr}}
+
+/* settings & performance: one card per group, rows divided by hairlines */
+.set-card{padding:4px 0;margin-bottom:6px}
+.set-card .set-row{display:flex;align-items:center;gap:20px;padding:15px 20px;margin:0;border-bottom:1px solid var(--line)}
+.set-card .set-row:last-child{border-bottom:0}
+.set-card .set-row .ctl{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex:none;min-width:120px}
+.set-card .set-row small{display:block;margin-top:3px;line-height:1.45;max-width:560px}
+.mods{color:var(--ice);font-size:12px;opacity:.85}
+.page-sub{color:var(--ink-3);margin:-4px 0 18px}
