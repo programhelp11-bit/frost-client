@@ -73,6 +73,9 @@ pub struct HudWidget {
     pub scale: f32,
     /// Glass tint opacity 0..=255.
     pub opacity: u8,
+    /// True once the player dragged the widget in the in-game HUD editor; otherwise it is auto-placed.
+    #[serde(default)]
+    pub placed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,7 +91,7 @@ impl Default for HudLayout {
         let mut y = 20.0;
         for kind in HudKind::ALL {
             let enabled = matches!(kind, HudKind::Cps | HudKind::Fps | HudKind::Ping | HudKind::Keystrokes);
-            widgets.push(HudWidget { kind, enabled, pos: [20.0, y], scale: 1.0, opacity: 120 });
+            widgets.push(HudWidget { kind, enabled, pos: [20.0, y], scale: 1.0, opacity: 120, placed: false });
             y += 56.0;
         }
         Self { widgets, snap_grid: 4.0 }

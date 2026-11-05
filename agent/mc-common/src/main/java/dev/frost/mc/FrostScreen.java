@@ -73,8 +73,15 @@ public class FrostScreen extends Screen {
                 return font.lineHeight;
             }
         };
+        // readable text: small GUI scales get blown up (the menu lays itself out in the shrunken space)
+        double gs = Math.max(1.0, mc.getWindow().getGuiScale());
+        final float u = (float) Math.max(1.0, Math.min(2.0, 3.0 / gs));
         if (toggleKey < 0) {
-            menu.render(canvas, this.width, this.height, mouseX, mouseY, down);
+            menu.ui = u;
+            g.pose().pushMatrix();
+            g.pose().scale(u, u);
+            menu.render(canvas, Math.round(this.width / u), Math.round(this.height / u), Math.round(mouseX / u), Math.round(mouseY / u), down);
+            g.pose().popMatrix();
             return;
         }
         // wheels close with their own key as well as Esc

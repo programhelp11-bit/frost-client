@@ -64,8 +64,14 @@ public class FrostScreen extends GuiScreen {
             }
         };
         boolean down = Mouse.isButtonDown(0);
+        int gs = new net.minecraft.client.gui.ScaledResolution(Minecraft.getMinecraft()).getScaleFactor();
+        final float u = (float) Math.max(1.0, Math.min(2.0, 3.0 / Math.max(1, gs)));
         if (toggleKey < 0) {
-            menu.render(canvas, this.width, this.height, mouseX, mouseY, down);
+            menu.ui = u;
+            net.minecraft.client.renderer.GlStateManager.pushMatrix();
+            net.minecraft.client.renderer.GlStateManager.scale(u, u, 1f);
+            menu.render(canvas, Math.round(this.width / u), Math.round(this.height / u), Math.round(mouseX / u), Math.round(mouseY / u), down);
+            net.minecraft.client.renderer.GlStateManager.popMatrix();
             return;
         }
         boolean keyDown = Keyboard.isKeyDown(toggleKey);

@@ -39,6 +39,8 @@ public final class Models {
         public float[] pos = new float[] {0f, 0f};
         public float scale = 1f;
         public int opacity = 120;
+        /** True after the player placed it in the HUD editor; otherwise the HUD stacks it automatically. */
+        public boolean placed = false;
 
         public Widget() {}
 

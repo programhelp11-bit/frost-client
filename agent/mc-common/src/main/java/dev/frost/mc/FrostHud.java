@@ -42,9 +42,13 @@ public final class FrostHud {
             if (!w.enabled) continue;
             if (w.kind.equals("coordinates") && !q.show_coordinates && !q.show_biome) continue;
             boolean keys = w.kind.equals("keystrokes");
-            float sc = Math.max(0.7f, Math.min(1.6f, w.scale));
+            float sc = Math.max(0.5f, Math.min(3f, w.scale));
             int px = keys ? gw - Math.round(70 * sc) : 6;
             int py = keys ? gh - Math.round(66 * sc) : cy;
+            if (w.placed && w.pos != null && w.pos.length >= 2) {
+                px = Math.round(w.pos[0]);
+                py = Math.round(w.pos[1]);
+            }
             g.pose().pushMatrix();
             g.pose().translate(px, py);
             g.pose().scale(sc, sc);
@@ -54,7 +58,7 @@ public final class FrostHud {
             if (keys) { lastW = 66; lastH = 58; }
             g.pose().popMatrix();
             st.bounds.put(w.kind, new int[] {px, py, Math.round(lastW * sc), Math.round(lastH * sc)});
-            if (!keys) cy += Math.round(lastH * sc) + 5;
+            if (!keys && !w.placed) cy += Math.round(lastH * sc) + 5;
         }
         if (System.currentTimeMillis() < st.noticeUntil && !st.notice.isEmpty()) {
             int nw = font.width(st.notice) + 16;

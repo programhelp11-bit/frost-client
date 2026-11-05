@@ -57,6 +57,16 @@ public final class Menu {
     public boolean kit;
     public float difficulty = 0.8f;
     public String message = "";
+    /** GUI scale factor the screen applies on top of Minecraft's (text size); coordinates here are divided by it. */
+    public float ui = 1f;
+    public boolean editing;
+    private String selected = "";
+    private int dragMode;                 // 0 none, 1 move, 2 resize
+    private int dragMx, dragMy;
+    private float dragScale;
+    private float[] dragPos = new float[2];
+    private int[] dragBounds = new int[4];
+    private boolean prevDown;
 
     private boolean wasDown;
     private boolean clicked;
@@ -98,15 +108,24 @@ public final class Menu {
         clicked = down && !wasDown;
         wasDown = down;
 
+        if (editing) {
+            renderEditor(c, sw, sh, down);
+            return;
+        }
         backdrop(c, sw, sh);
         int w = Math.min(sw - 24, 620);
         int h = Math.min(sh - 24, 340);
         int x = (sw - w) / 2;
         int y = (sh - h) / 2;
         int sb = 132;
+        if (clicked && !over(x, y, w, h)) {                 // click beside the window: edit the HUD
+            editing = true;
+            selected = "";
+            return;
+        }
         card(c, x, y, w, h, 0xC0081634, 0x4A8CBEFF);
-        c.fill(x + 1, y + 1, x + w - 1, y + 3, 0x14BFE6FF);
-        c.fill(x + 1, y + 1, x + sb, y + h - 1, 0xDD050B1E);
+        rfill(c, x + 1, y + 1, sb - 1, h - 2, 3, 0xDD050B1E);
+        c.fill(x + sb - 4, y + 1, x + sb, y + h - 1, 0xDD050B1E);
         c.fill(x + sb, y + 1, x + sb + 1, y + h - 1, LINE);
 
         // brand
@@ -121,10 +140,10 @@ public final class Menu {
             boolean on = tab == tabs[i];
             boolean hov = over(x + 8, ny, sb - 16, 22);
             if (on) {
-                c.fill(x + 8, ny, x + sb - 8, ny + 22, 0x335B86FF);
-                c.fill(x + 8, ny + 3, x + 10, ny + 19, 0xFF5B86FF);
+                rfill(c, x + 8, ny, sb - 16, 22, 4, 0x335B86FF);
+                rfill(c, x + 8, ny + 4, 2, 14, 1, 0xFF5B86FF);
             } else if (hov) {
-                c.fill(x + 8, ny, x + sb - 8, ny + 22, 0x1A8CBEFF);
+                rfill(c, x + 8, ny, sb - 16, 22, 4, 0x1A8CBEFF);
             }
             c.text(names[i], x + 20, ny + 7, on ? TEXT : DIM);
             if (hov && clicked && !on) {
@@ -228,13 +247,29 @@ public final class Menu {
         return mx >= x && mx < x + w && my >= y && my < y + h;
     }
 
+    /** Rounded filled rectangle built from fills (corner radius r). */
+    static void rfill(Canvas c, int x, int y, int w, int h, int r, int col) {
+        if (w <= 0 || h <= 0) return;
+        r = Math.min(r, Math.min(w, h) / 2);
+        if (r <= 0) {
+            c.fill(x, y, x + w, y + h, col);
+            return;
+        }
+        c.fill(x, y + r, x + w, y + h - r, col);
+        for (int i = 0; i < r; i++) {
+            double dy = r - i - 0.5;
+            int ins = r - (int) Math.round(Math.sqrt(r * (double) r - dy * dy));
+            c.fill(x + ins, y + i, x + w - ins, y + i + 1, col);
+            c.fill(x + ins, y + h - 1 - i, x + w - ins, y + h - i, col);
+        }
+    }
+
+    /** Rounded glass card: border colour, translucent body, soft sheen. */
     private void card(Canvas c, int x, int y, int w, int h, int body, int border) {
-        c.fill(x, y, x + w, y + h, body);
-        c.fill(x, y, x + w, y + 1, border);
-        c.fill(x, y + h - 1, x + w, y + h, border);
-        c.fill(x, y + 1, x + 1, y + h - 1, border);
-        c.fill(x + w - 1, y + 1, x + w, y + h - 1, border);
-        if (h > 12) c.fill(x + 1, y + 1, x + w - 1, y + 2, 0x16BFE6FF);       // glass sheen
+        int r = h >= 24 ? 4 : 3;
+        rfill(c, x, y, w, h, r, border);
+        rfill(c, x + 1, y + 1, w - 2, h - 2, Math.max(1, r - 1), body);
+        if (h > 12) c.fill(x + r, y + 1, x + w - r, y + 2, 0x18DCF0FF);
     }
 
     static void snowflake(Canvas c, int x, int y, int col) {
@@ -277,10 +312,9 @@ public final class Menu {
         if (!row(c, title, desc, 40)) return false;
         int px = cx + cw - 10 - 28;
         int py = curY + 9;
-        c.fill(px, py, px + 28, py + 12, on ? BLUE : 0x553A4A6E);
-        c.fill(px, py, px + 28, py + 1, on ? 0xFF6F94FF : 0x30FFFFFF);
+        rfill(c, px, py, 28, 12, 6, on ? BLUE : 0x553A4A6E);
         int kx = on ? px + 17 : px + 2;
-        c.fill(kx, py + 2, kx + 9, py + 10, 0xFFFFFFFF);
+        rfill(c, kx, py + 2, 9, 8, 4, 0xFFFFFFFF);
         return over(cx, curY, cw, ROW_H) && clicked;
     }
 
@@ -308,7 +342,7 @@ public final class Menu {
         for (int i = 0; i < opts.length; i++) {
             int bw = c.width(opts[i]) + 14;
             boolean hov = over(x, by, bw, 16);
-            c.fill(x, by, x + bw, by + 16, i == sel ? BLUE : (hov ? 0x553D6BFF : 0x2A8CBEFF));
+            rfill(c, x, by, bw, 16, 3, i == sel ? BLUE : (hov ? 0x553D6BFF : 0x2A8CBEFF));
             c.text(opts[i], x + 7, by + 5, TEXT);
             if (hov && clicked) res = i;
             x += bw + 3;
@@ -327,7 +361,7 @@ public final class Menu {
         for (int i = 0; i < labels.length; i++) {
             int bw = c.width(labels[i]) + 20;
             boolean hov = over(x, by, bw, 18);
-            c.fill(x, by, x + bw, by + 18, i == 0 ? (hov ? 0xFF5B86FF : BLUE) : (hov ? 0x553D6BFF : 0x2A8CBEFF));
+            rfill(c, x, by, bw, 18, 4, i == 0 ? (hov ? 0xFF5B86FF : BLUE) : (hov ? 0x553D6BFF : 0x2A8CBEFF));
             c.text(labels[i], x + 10, by + 6, TEXT);
             if (hov && clicked) res = i;
             x += bw + 4;
@@ -342,6 +376,10 @@ public final class Menu {
     // ---------------------------------------------------------------- HUD
 
     private void hudTab(Canvas c) {
+        if (rowButtons(c, "HUD editor", "Drag, resize and arrange every element on screen", new String[] {"Open editor"}) == 0) {
+            editing = true;
+            selected = "";
+        }
         java.util.List<Models.Widget> ws = state.hud.widgets;
         float scale = ws.isEmpty() ? 1f : ws.get(0).scale;
         int opacity = ws.isEmpty() ? 120 : ws.get(0).opacity;
@@ -423,5 +461,152 @@ public final class Menu {
         d = rowStepper(c, "Simulation distance", "Used when the cap is on", String.valueOf(q.sim_distance_cap));
         if (d != 0) { q.sim_distance_cap = Math.max(4, Math.min(16, q.sim_distance_cap + d)); changed(); }
         if (rowToggle(c, "No menu blur", "Remove the blurred menu background", q.no_menu_blur)) { q.no_menu_blur = !q.no_menu_blur; changed(); }
+    }
+
+    // ---------------------------------------------------------------- HUD editor
+
+    private Models.Widget widget(String kind) {
+        for (Models.Widget w : state.hud.widgets) if (w.kind.equals(kind)) return w;
+        return null;
+    }
+
+    private void renderEditor(Canvas c, int sw, int sh, boolean down) {
+        float u = ui <= 0f ? 1f : ui;
+        boolean released = !down && prevDown;
+        prevDown = down;
+        int rmx = Math.round(mx * u), rmy = Math.round(my * u);   // real GUI pixels (what the HUD uses)
+        c.fill(0, 0, sw, sh, 0x2E050C20);
+
+        // right-hand panel
+        int pw = 178, ph = Math.min(sh - 16, 318), px = sw - pw - 10, py = (sh - ph) / 2;
+        boolean inPanel = over(px, py, pw, ph);
+
+        // interaction with the widgets on screen
+        int gw = Math.round(sw * u), gh = Math.round(sh * u);
+        if (clicked && !inPanel) {
+            dragMode = 0;
+            Models.Widget sel = selected.isEmpty() ? null : widget(selected);
+            int[] sb = sel == null ? null : state.bounds.get(selected);
+            if (sb != null && rmx >= sb[0] + sb[2] - 9 && rmx <= sb[0] + sb[2] + 3 && rmy >= sb[1] + sb[3] - 9 && rmy <= sb[1] + sb[3] + 3) {
+                dragMode = 2;
+            } else {
+                String hit = "";
+                for (int i = state.hud.widgets.size() - 1; i >= 0 && hit.isEmpty(); i--) {
+                    Models.Widget w = state.hud.widgets.get(i);
+                    int[] b = w.enabled ? state.bounds.get(w.kind) : null;
+                    if (b != null && rmx >= b[0] && rmx < b[0] + b[2] && rmy >= b[1] && rmy < b[1] + b[3]) hit = w.kind;
+                }
+                selected = hit;
+                if (!hit.isEmpty()) dragMode = 1;
+            }
+            Models.Widget w = selected.isEmpty() ? null : widget(selected);
+            int[] b = w == null ? null : state.bounds.get(selected);
+            if (w != null && b != null) {
+                dragMx = rmx;
+                dragMy = rmy;
+                dragScale = w.scale;
+                dragBounds = b.clone();
+                dragPos = new float[] {b[0], b[1]};
+            } else {
+                dragMode = 0;
+            }
+        }
+        float[] guides = {-1f, -1f};
+        if (dragMode != 0 && down) {
+            Models.Widget w = widget(selected);
+            if (w != null) {
+                if (dragMode == 1) {
+                    float nx = dragPos[0] + (rmx - dragMx), ny = dragPos[1] + (rmy - dragMy);
+                    int bw = dragBounds[2], bh = dragBounds[3];
+                    float cxm = nx + bw / 2f, cym = ny + bh / 2f;
+                    if (Math.abs(cxm - gw / 2f) < 6) { nx = gw / 2f - bw / 2f; guides[0] = gw / 2f; }
+                    if (Math.abs(cym - gh / 2f) < 6) { ny = gh / 2f - bh / 2f; guides[1] = gh / 2f; }
+                    if (Math.abs(nx) < 6) nx = 0;
+                    if (Math.abs(ny) < 6) ny = 0;
+                    if (Math.abs(nx + bw - gw) < 6) nx = gw - bw;
+                    if (Math.abs(ny + bh - gh) < 6) ny = gh - bh;
+                    w.pos = new float[] {Math.max(0, Math.min(gw - bw, nx)), Math.max(0, Math.min(gh - bh, ny))};
+                    w.placed = true;
+                } else {
+                    float nw = Math.max(24f, dragBounds[2] + (rmx - dragMx));
+                    w.scale = Math.max(0.5f, Math.min(3f, Math.round(dragScale * nw / Math.max(1, dragBounds[2]) * 20f) / 20f));
+                    if (!w.placed) {
+                        w.pos = new float[] {dragBounds[0], dragBounds[1]};
+                        w.placed = true;
+                    }
+                }
+            }
+        }
+        if (released && dragMode != 0) {
+            dragMode = 0;
+            changed();
+        }
+        // outlines
+        for (Models.Widget w : state.hud.widgets) {
+            int[] b = w.enabled ? state.bounds.get(w.kind) : null;
+            if (b == null) continue;
+            int x0 = Math.round(b[0] / u), y0 = Math.round(b[1] / u), x1 = Math.round((b[0] + b[2]) / u), y1 = Math.round((b[1] + b[3]) / u);
+            boolean sel = w.kind.equals(selected);
+            boolean hov = rmx >= b[0] && rmx < b[0] + b[2] && rmy >= b[1] && rmy < b[1] + b[3] && !inPanel;
+            int col = sel ? 0xFF8FD3FF : (hov ? 0xA08FD3FF : 0x508CBEFF);
+            c.fill(x0 - 2, y0 - 2, x1 + 2, y0 - 1, col);
+            c.fill(x0 - 2, y1 + 1, x1 + 2, y1 + 2, col);
+            c.fill(x0 - 2, y0 - 1, x0 - 1, y1 + 1, col);
+            c.fill(x1 + 1, y0 - 1, x1 + 2, y1 + 1, col);
+            if (sel) {
+                rfill(c, x1 - 3, y1 - 3, 7, 7, 2, 0xFF3D6BFF);
+                c.fill(x1 - 1, y1 - 1, x1 + 2, y1 + 2, 0xFFFFFFFF);
+                c.text(label(w.kind), x0 - 2, Math.max(1, y0 - 12), ACCENT);
+            }
+        }
+        if (guides[0] >= 0) c.fill(Math.round(guides[0] / u), 0, Math.round(guides[0] / u) + 1, sh, 0x808FD3FF);
+        if (guides[1] >= 0) c.fill(0, Math.round(guides[1] / u), sw, Math.round(guides[1] / u) + 1, 0x808FD3FF);
+
+        // panel
+        card(c, px, py, pw, ph, 0xDC081634, 0x4A8CBEFF);
+        c.text("HUD editor", px + 12, py + 10, TEXT);
+        c.text("HUD editor", px + 13, py + 10, TEXT);
+        c.text("Drag to move, corner to resize", px + 12, py + 23, DIM);
+        int ry = py + 38;
+        for (Models.Widget w : state.hud.widgets) {
+            if (ry + 15 > py + ph - 92) break;
+            boolean sel = w.kind.equals(selected);
+            boolean hov = over(px + 6, ry, pw - 12, 14);
+            if (sel) rfill(c, px + 6, ry, pw - 12, 14, 3, 0x335B86FF);
+            else if (hov) rfill(c, px + 6, ry, pw - 12, 14, 3, 0x1A8CBEFF);
+            c.text(label(w.kind), px + 12, ry + 3, w.enabled ? TEXT : DIM);
+            int tx = px + pw - 12 - 20;
+            rfill(c, tx, ry + 2, 20, 10, 5, w.enabled ? BLUE : 0x553A4A6E);
+            rfill(c, w.enabled ? tx + 11 : tx + 2, ry + 3, 7, 8, 3, 0xFFFFFFFF);
+            if (clicked && hov) {
+                if (over(tx - 2, ry, 26, 14)) {
+                    w.enabled = !w.enabled;
+                    changed();
+                } else {
+                    selected = w.kind;
+                }
+            }
+            ry += 15;
+        }
+        int by = py + ph - 86;
+        Models.Widget sel = selected.isEmpty() ? null : widget(selected);
+        if (sel != null) {
+            c.text("Size", px + 12, by + 4, DIM);
+            c.text(String.format(Locale.ROOT, "%.2fx", sel.scale), px + pw - 74, by + 4, TEXT);
+            if (smallButton(c, px + pw - 94, by, 16, 14, "-")) { sel.scale = Math.max(0.5f, Math.round((sel.scale - 0.1f) * 20f) / 20f); changed(); }
+            if (smallButton(c, px + pw - 28, by, 16, 14, "+")) { sel.scale = Math.min(3f, Math.round((sel.scale + 0.1f) * 20f) / 20f); changed(); }
+            if (smallButton(c, px + 10, by + 20, (pw - 24) / 2, 14, "Auto place")) { sel.placed = false; changed(); }
+            if (smallButton(c, px + 14 + (pw - 24) / 2, by + 20, (pw - 24) / 2, 14, "Reset size")) { sel.scale = 1f; changed(); }
+        } else {
+            c.text("Select an element", px + 12, by + 4, DIM);
+        }
+        if (smallButton(c, px + 10, by + 42, (pw - 24) / 2, 16, "Reset all")) {
+            for (Models.Widget w : state.hud.widgets) { w.placed = false; w.scale = 1f; }
+            changed();
+        }
+        if (smallButton(c, px + 14 + (pw - 24) / 2, by + 42, (pw - 24) / 2, 16, "Done")) {
+            editing = false;
+            selected = "";
+        }
     }
 }
