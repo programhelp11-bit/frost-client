@@ -151,8 +151,11 @@ public final class Hud {
         lastW = w;
         lastH = h;
         int a = (tint >>> 24) & 0xFF;
-        roundedFill(x, y, w, h, 3, 0x358CBEFF);
+        roundedFill(x - 1, y - 1, w + 2, h + 2, 4, 0x1A2A56FF);
+        roundedFill(x, y, w, h, 3, 0x408CBEFF);
         roundedFill(x + 1, y + 1, w - 2, h - 2, 2, (a << 24) | 0x0A1A44);
+        Gui.drawRect(x + 2, y + 1, x + w - 2, y + 1 + Math.max(2, (h - 2) / 2), 0x1A3D6BFF);
+        Gui.drawRect(x + 3, y + 1, x + w - 3, y + 2, 0x44DCF0FF);
     }
 
     private static void roundedFill(int x, int y, int w, int h, int r, int color) {

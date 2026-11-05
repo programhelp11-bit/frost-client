@@ -23,9 +23,9 @@ public final class Radial {
     private static final int TEXT = 0xFFEAF2FF;
     private static final int DIM = 0xFFA0AFC8;
     private static final int ACCENT = 0xFF8FD3FF;
-    private static final int RING = 0xA00E204E;
-    private static final int RING_ALT = 0xA0122A5C;
-    private static final int HOVER = 0xD23D6BFF;
+    private static final int RING = 0xB0102A5C;
+    private static final int RING_ALT = 0xB0153470;
+    private static final int HOVER = 0xE03D6BFF;
     private static final int ACTIVE = 0xB48FD3FF;
 
     private final String title;
@@ -69,7 +69,7 @@ public final class Radial {
         int cy = sh / 2;
         int outer = Math.max(50, Math.min(110, Math.min(sw, sh) / 2 - 24));
         int inner = outer * 38 / 100;
-        c.fill(0, 0, sw, sh, 0x66050C20);
+        Menu.backdrop(c, sw, sh);
 
         int hover = indexAt(n, mouseX - cx, mouseY - cy, inner, outer);
         if (n == 0) {
@@ -81,6 +81,7 @@ public final class Radial {
             double xo = Math.sqrt((double) outer * outer - (double) y * y);
             int xOuter = (int) xo;
             int xInner = Math.abs(y) < inner ? (int) Math.sqrt((double) inner * inner - (double) y * y) : -1;
+            if (xInner >= 0) c.fill(cx - xInner, cy + y, cx + xInner + 1, cy + y + 1, 0xC00A1A44);   // glass centre disc
             if (xInner < 0) {
                 run(c, cx, cy, y, -xOuter, xOuter, n, sector, hover, outer);
             } else {
@@ -149,7 +150,8 @@ public final class Radial {
         double len = sector * r;
         if (n > 1 && (within < 1.5 || within > len - 1.5)) return 0; // gap between slots
         Slot s = slots.get(i);
-        if (r > outer - 5 && r <= outer - 1) return s.color; // swatch band on the rim
+        if (r > outer - 1.2) return 0x668CBEFF;                 // glass edge
+        if (r > outer - 5 && r <= outer - 1.2) return s.color; // swatch band on the rim
         if (i == hover) return HOVER;
         if (s.id.equals(activeId)) return ACTIVE;
         return (i & 1) == 0 ? RING : RING_ALT;

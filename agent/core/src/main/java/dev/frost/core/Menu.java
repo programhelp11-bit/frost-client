@@ -234,6 +234,7 @@ public final class Menu {
         c.fill(x, y + h - 1, x + w, y + h, border);
         c.fill(x, y + 1, x + 1, y + h - 1, border);
         c.fill(x + w - 1, y + 1, x + w, y + h - 1, border);
+        if (h > 12) c.fill(x + 1, y + 1, x + w - 1, y + 2, 0x16BFE6FF);       // glass sheen
     }
 
     static void snowflake(Canvas c, int x, int y, int col) {
@@ -265,7 +266,9 @@ public final class Menu {
         boolean hov = over(cx, curY, cw, ROW_H);
         card(c, cx, curY, cw, ROW_H, hov ? HOVER : CARD, 0x24 << 24 | 0x8CBEFF);
         int textMax = cw - controlW - 28;
-        c.text(fit(c, title, textMax), cx + 10, curY + (desc.isEmpty() ? 11 : 5), TEXT);
+        String tt = fit(c, title, textMax);
+        c.text(tt, cx + 10, curY + (desc.isEmpty() ? 11 : 5), TEXT);
+        c.text(tt, cx + 11, curY + (desc.isEmpty() ? 11 : 5), TEXT);        // semi-bold like the launcher
         if (!desc.isEmpty()) c.text(fit(c, desc, textMax), cx + 10, curY + 17, DIM);
         return true;
     }
