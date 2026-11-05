@@ -12,7 +12,7 @@ const stu = {
   gal: { page: null, offset: 0, sort: 'new', loading: false, error: '', favs: [], active: 'frost', loaded: false },
 };
 const EDS = { skin: stu.skin, cape: stu.cape };
-const SCALE = { skin: 8, cape: 20 };
+const SCALE = { skin: 4, cape: 20 };
 
 /* ---------------------------------------------------------------- drawing core */
 function edCtx(ed) { return ed.buf.getContext('2d', { willReadFrequently: true }); }
@@ -106,6 +106,7 @@ function drawEditor(kind) {
     }
   }
   drawPreviews(kind);
+  if (kind === 'skin') Skin3D.redraw();
 }
 
 /* ---------------------------------------------------------------- character preview */
@@ -240,24 +241,30 @@ function needAccount(title) {
 
 function pageSkinEditor() {
   if (!S.st.account) return needAccount('Skin editor');
-  const ed = stu.skin;
-  return `<h1 class="page-title">Skin editor</h1><div class="page-sub">Draw a skin, save it to your library and wear it everywhere — it is changed on your Minecraft account itself.</div>
+  const ed = stu.skin, V = Skin3D.view;
+  const seg = (act, items) => `<div class="seg">${items.map(([k, l, on]) => `<button class="${on ? 'on' : ''}" data-act="${act}" data-k="${k}">${l}</button>`).join('')}</div>`;
+  return `<h1 class="page-title">Skin editor</h1><div class="page-sub">Paint straight on the 3D model. Left mouse paints, right mouse drag turns it, wheel zooms. Wear it and it is changed on your Minecraft account itself.</div>
   <div class="studio">
     <section class="card glass ed">
       ${toolbar('skin')}
-      <div class="ed-wrap"><canvas id="ed-skin" width="${64 * SCALE.skin}" height="${64 * SCALE.skin}"></canvas></div>
-      <div class="line"><label class="chk"><input type="checkbox" data-bind="st-guide" ${ed.guide ? 'checked' : ''}> Show guide</label><div class="grow"></div>
-        <button class="btn ghost sm" data-act="st-import" data-ed="skin">Import PNG</button>
-        <button class="btn ghost sm" data-act="st-load-skin">Load my current skin</button>
-        <button class="btn ghost sm" data-act="st-clear" data-ed="skin">Clear</button></div>
+      <div class="line" style="margin:0 0 10px">
+        ${seg('v3-layer', [['0', 'Skin', V.layer === 0], ['1', 'Overlay', V.layer === 1]])}
+        ${seg('v3-opt', [['mirror', 'Mirror', V.mirror], ['overlay', 'Overlay on', V.overlay]])}
+        ${seg('v3-view', [['front', 'Front', false], ['side', 'Side', false], ['back', 'Back', false]])}
+      </div>
+      <div class="ed3"><canvas id="ed3d" width="${Skin3D.W}" height="${Skin3D.H}"></canvas></div>
     </section>
     <aside class="card glass side">
-      <h3>Preview</h3>
-      <div class="pv"><canvas id="pv-front" width="128" height="256"></canvas><canvas id="pv-back" width="128" height="256"></canvas></div>
       <input class="field" data-bind="st-name-skin" value="${esc(ed.name)}" maxlength="32" placeholder="Skin name">
       <div class="line"><div class="seg"><button class="${!ed.slim ? 'on' : ''}" data-act="st-variant" data-s="0">Classic</button><button class="${ed.slim ? 'on' : ''}" data-act="st-variant" data-s="1">Slim</button></div></div>
       <div class="line"><button class="btn ghost" data-act="st-save-skin">Save to library</button><button class="btn" data-act="st-apply-skin">Wear this skin</button></div>
-      <h3 style="margin-top:18px">Skin library <span class="tag">R in game</span></h3>
+      <h3 style="margin-top:16px">Texture</h3>
+      <div class="ed-wrap"><canvas id="ed-skin" width="${64 * SCALE.skin}" height="${64 * SCALE.skin}"></canvas></div>
+      <label class="chk"><input type="checkbox" data-bind="st-guide" ${ed.guide ? 'checked' : ''}> Show guide</label>
+      <div class="line"><button class="btn ghost sm" data-act="st-import" data-ed="skin">Import PNG</button>
+        <button class="btn ghost sm" data-act="st-load-skin">My skin</button>
+        <button class="btn ghost sm" data-act="st-clear" data-ed="skin">Clear</button></div>
+      <h3 style="margin-top:16px">Skin library <span class="tag">R in game</span></h3>
       <div class="lib" id="lib-skins">${libItems(['skin'])}</div>
     </aside>
   </div>`;
@@ -342,9 +349,87 @@ function studioMount() {
       cv.addEventListener('pointerup', () => { stroke = null; });
       cv.addEventListener('pointerleave', () => { stroke = null; });
     }
+    if (kind === 'skin') wire3d();
     drawEditor(kind);
     libLoad();
   }
+}
+
+/* starting point: a plain skin so the model is never invisible */
+function defaultSkin() {
+  const g = stu.skin.buf.getContext('2d');
+  g.clearRect(0, 0, 64, 64);
+  const region = (tu, tv, w, h, d, col) => {
+    g.fillStyle = col;
+    g.fillRect(tu + d, tv, 2 * w, d);                // top + bottom
+    g.fillRect(tu, tv + d, 2 * d + 2 * w, h);        // right, front, left, back
+  };
+  const SK = '#c9906c', HAIR = '#3a281c', SHIRT = '#3d6bff', PANTS = '#22337a', SHOE = '#2b2b33';
+  region(0, 0, 8, 8, 8, SK); region(16, 16, 8, 12, 4, SHIRT); region(40, 16, 4, 12, 4, SK); region(32, 48, 4, 12, 4, SK);
+  region(0, 16, 4, 12, 4, PANTS); region(16, 48, 4, 12, 4, PANTS);
+  g.fillStyle = HAIR; g.fillRect(8, 0, 16, 8); g.fillRect(8, 8, 8, 2); g.fillRect(0, 8, 8, 3); g.fillRect(16, 8, 8, 3); g.fillRect(24, 8, 8, 8);
+  g.fillStyle = '#ffffff'; g.fillRect(9, 12, 2, 1); g.fillRect(13, 12, 2, 1);
+  g.fillStyle = '#2a5bd6'; g.fillRect(10, 12, 1, 1); g.fillRect(13, 12, 1, 1);
+  g.fillStyle = '#8a5a44'; g.fillRect(10, 14, 4, 1);
+  g.fillStyle = SHOE; g.fillRect(4, 26, 4, 2); g.fillRect(20, 58, 4, 2);
+  g.fillStyle = SHIRT; g.fillRect(44, 20, 4, 4); g.fillRect(36, 52, 4, 4);
+  stu.skin.hist = []; stu.skin.fut = [];
+}
+
+/* 3D painting on the model */
+let stroke3 = null, rot3 = null;
+function wire3d() {
+  const cv = document.getElementById('ed3d');
+  if (!cv || cv._wired) return;
+  cv._wired = true;
+  if (!stu.skin.inited) {
+    stu.skin.inited = true;
+    defaultSkin();
+    inv('skin_current').then(async r => { stu.skin.slim = r.slim; await importInto('skin', 'data:image/png;base64,' + r.png_b64); if (S.page === 'skinedit') renderView(); }).catch(() => {});
+  }
+  Skin3D.attach(cv);
+  cv.addEventListener('contextmenu', e => e.preventDefault());
+  cv.addEventListener('wheel', e => {
+    e.preventDefault();
+    Skin3D.view.zoom = Math.max(0.6, Math.min(2.4, Skin3D.view.zoom * (e.deltaY < 0 ? 1.1 : 0.9)));
+    Skin3D.invalidate(); Skin3D.redraw();
+  }, { passive: false });
+  cv.addEventListener('pointerdown', e => {
+    cv.setPointerCapture(e.pointerId);
+    if (e.button === 2 || e.button === 1) { rot3 = { x: e.clientX, y: e.clientY }; return; }
+    const ed = stu.skin, [px, py] = Skin3D.toCanvas(e), h = Skin3D.hit(px, py);
+    if (!h) { rot3 = { x: e.clientX, y: e.clientY }; return; }       // dragging empty space turns the model
+    const t = Skin3D.texelsFor(h)[0];
+    if (ed.tool === 'pick') { pickColor(ed, t[0], t[1]); ed.tool = 'pen'; renderView(); return; }
+    snapshot(ed);
+    if (ed.tool === 'fill') { flood(ed, t[0], t[1]); drawEditor('skin'); return; }
+    stroke3 = { px, py, erase: ed.tool === 'erase' };
+    for (const tt of Skin3D.texelsFor(h)) stamp(ed, tt[0], tt[1], stroke3.erase);
+    drawEditor('skin');
+  });
+  cv.addEventListener('pointermove', e => {
+    if (rot3) {
+      Skin3D.view.yaw += (e.clientX - rot3.x) * 0.012;
+      Skin3D.view.pitch = Math.max(-0.9, Math.min(0.9, Skin3D.view.pitch + (e.clientY - rot3.y) * 0.008));
+      rot3.x = e.clientX; rot3.y = e.clientY;
+      Skin3D.invalidate(); Skin3D.redraw();
+      return;
+    }
+    if (!stroke3 || !(e.buttons & 1)) return;
+    const ed = stu.skin, [px, py] = Skin3D.toCanvas(e);
+    const dist = Math.hypot(px - stroke3.px, py - stroke3.py), n = Math.max(1, Math.ceil(dist / 1.5));
+    let seen = new Set();
+    for (let i = 1; i <= n; i++) {
+      const x = stroke3.px + (px - stroke3.px) * i / n, y = stroke3.py + (py - stroke3.py) * i / n, h = Skin3D.hit(x, y);
+      if (!h) continue;
+      for (const tt of Skin3D.texelsFor(h)) { const k = tt[0] + ',' + tt[1]; if (!seen.has(k)) { seen.add(k); stamp(ed, tt[0], tt[1], stroke3.erase); } }
+    }
+    stroke3.px = px; stroke3.py = py;
+    drawEditor('skin');
+  });
+  const end = () => { stroke3 = null; rot3 = null; };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointercancel', end);
 }
 
 function cell(kind, cv, e) {
@@ -430,6 +515,9 @@ const STUDIO_ACTIONS = {
       toast('Skin updated on your account', 'ok');
     } catch (e) { toast(e, 'err'); }
   },
+  'v3-layer': el => { Skin3D.view.layer = +el.dataset.k; Skin3D.invalidate(); renderView(); },
+  'v3-opt': el => { const k = el.dataset.k; Skin3D.view[k] = !Skin3D.view[k]; renderView(); },
+  'v3-view': el => { Skin3D.view.yaw = { front: 0, side: Math.PI / 2, back: Math.PI }[el.dataset.k]; Skin3D.view.pitch = 0.08; Skin3D.invalidate(); Skin3D.redraw(); },
   'st-save-cape': async () => {
     try {
       await inv('lib_save', { kind: 'cape', name: stu.cape.name || 'My cape', pngB64: capeB64(), slim: false });

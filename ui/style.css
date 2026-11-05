@@ -319,3 +319,14 @@ input.field{background-color:#0d1b40;color:var(--ink)}
 .set-card .set-row small{display:block;margin-top:3px;line-height:1.45;max-width:560px}
 .mods{color:var(--ice);font-size:12px;opacity:.85}
 .page-sub{color:var(--ink-3);margin:-4px 0 18px}
+
+.ed3{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
+.ed3 canvas#ed3d{width:300px;height:367px;border-radius:12px;background:radial-gradient(ellipse at 50% 30%,rgba(61,107,255,.18),rgba(8,16,40,.55));border:1px solid var(--line);cursor:crosshair;touch-action:none}
+.ed3 .tex{flex:1;min-width:250px}
+.ed3 .tex .ed-wrap canvas{width:100%;max-width:320px;height:auto}
+.ed3 .tex h3{margin:0 0 8px}
+
+.seg button{white-space:nowrap}
+.ed3{display:flex;justify-content:center}
+.ed3 canvas#ed3d{width:360px;height:440px}
+.studio .side .ed-wrap canvas{width:100%;height:auto;max-width:256px}
