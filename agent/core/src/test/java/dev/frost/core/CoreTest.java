@@ -123,16 +123,17 @@ class CoreTest {
         };
         // sweep clicks over the whole screen on the HUD tab: some toggle must flip
         menu.tab = Menu.Tab.HUD;
-        for (int y = 0; y < 360; y += 6) {
-            for (int x = 140; x < 640; x += 12) {
+        for (int y = 14; y < 346; y += 6) {
+            for (int x = 140; x < 620; x += 12) {
                 menu.render(canvas, 640, 360, x, y, false);
                 menu.render(canvas, 640, 360, x, y, true);
             }
         }
         assertTrue(changed[0] > 0, "HUD controls should react to clicks");
+        menu.editing = false;
         menu.tab = Menu.Tab.TRAINER;
-        for (int y = 0; y < 360; y += 6) {
-            for (int x = 140; x < 640; x += 6) {
+        for (int y = 14; y < 346; y += 6) {
+            for (int x = 140; x < 620; x += 6) {
                 menu.render(canvas, 640, 360, x, y, false);
                 menu.render(canvas, 640, 360, x, y, true);
             }
