@@ -315,7 +315,7 @@ function pageRust() {
       setRow('Java (JDK 25)', 'Only used once, to prepare the resources from your own copy of the game.', pill(R && R.java, R && R.java ? 'Found' : 'Missing')))}
     ${setGroup('HORIZON',
       setRow('Source code', 'Downloaded into the Frost data folder. Press again to update it.', busy === 'setup' ? '<span class="spin"></span>' : `${pill(R && R.cloned, R && R.cloned ? 'Downloaded' : 'Not yet')}<button class="btn sm" data-act="rust-setup">${R && R.cloned ? 'Update' : 'Download'}</button>`),
-      setRow('First start', 'Horizon contains no Minecraft files. Pick the 26.3 server.jar once so it can extract them. Play 26.3 once in the official launcher first.', `<input class="input" id="rust-jar" placeholder="path to server.jar" value="${esc(S.rustJar || '')}" style="width:220px">`),
+      setRow('First start', 'Horizon contains no Minecraft files. Pick the 26.3 server.jar once so it can extract them. Play 26.3 once in the official launcher first.', `<input class="field" id="rust-jar" placeholder="path to server.jar" value="${esc(S.rustJar || '')}" style="width:220px;user-select:text">`),
       setRow('Play', 'The first build takes several minutes. Horizon opens in its own window.', `<button class="btn sm" data-act="rust-run" data-prep="1">Prepare &amp; start</button><button class="btn ghost sm" data-act="rust-run" data-prep="0">Start</button>`))}
     <p class="muted-note">Horizon is a separate project (github.com/horizon-rust/horizon) and an early one, so expect rough edges. Frost's capes, HUD and bots only exist in the Frost mods.</p>`;
 }
