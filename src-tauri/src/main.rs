@@ -711,9 +711,10 @@ fn horizon_exe() -> Option<std::path::PathBuf> {
                     return Some(f);
                 }
             } else if p.is_file() && name.contains("horizon") && !name.contains("setup") && !name.contains("unins") {
-                let ok = if cfg!(windows) {
-                    name.ends_with(".exe")
-                } else {
+                #[cfg(windows)]
+                let ok = name.ends_with(".exe");
+                #[cfg(not(windows))]
+                let ok = {
                     use std::os::unix::fs::PermissionsExt;
                     !name.contains('.') && std::fs::metadata(&p).map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(false)
                 };
