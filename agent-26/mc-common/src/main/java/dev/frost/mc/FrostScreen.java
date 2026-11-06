@@ -75,7 +75,7 @@ public class FrostScreen extends Screen {
         };
         // readable text: small GUI scales get blown up (the menu lays itself out in the shrunken space)
         double gs = Math.max(1.0, mc.getWindow().getGuiScale());
-        final float u = (float) Math.max(1.0, Math.min(2.0, 3.0 / gs));
+        final float u = (float) Math.max(1, Math.min(3, Math.round(3.5 / gs)));
         if (toggleKey < 0) {
             menu.ui = u;
             g.pose().pushMatrix();

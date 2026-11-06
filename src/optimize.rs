@@ -15,6 +15,7 @@ const LEGACY: &[(&str, &str)] = &[
     ("useVbo", "true"),
     ("fboEnable", "true"),
     ("viewBobbing", "false"),
+    ("snooperEnabled", "false"),
 ];
 
 const MODERN: &[(&str, &str)] = &[
@@ -32,6 +33,17 @@ const MODERN: &[(&str, &str)] = &[
     ("menuBackgroundBlurriness", "0"),
     ("cutoutLeaves", "false"),
     ("improvedTransparency", "false"),
+    ("chunkSectionFadeInTime", "0.0"),
+    ("syncChunkWrites", "false"),
+    ("useNativeTransport", "true"),
+    ("showAutosaveIndicator", "false"),
+    ("inactivityFpsLimit", "\"afk\""),
+    ("screenEffectScale", "0.0"),
+    ("fovEffectScale", "0.0"),
+    ("darknessEffectScale", "0.0"),
+    ("glintSpeed", "0.0"),
+    ("glintStrength", "0.0"),
+    ("onboardAccessibility", "false"),
 ];
 
 /// Keys that are only lowered, never raised (the player may prefer less).

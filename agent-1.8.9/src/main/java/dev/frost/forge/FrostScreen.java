@@ -65,7 +65,7 @@ public class FrostScreen extends GuiScreen {
         };
         boolean down = Mouse.isButtonDown(0);
         int gs = new net.minecraft.client.gui.ScaledResolution(Minecraft.getMinecraft()).getScaleFactor();
-        final float u = (float) Math.max(1.0, Math.min(2.0, 3.0 / Math.max(1, gs)));
+        final float u = (float) Math.max(1, Math.min(3, Math.round(3.5 / Math.max(1, gs))));
         if (toggleKey < 0) {
             menu.ui = u;
             net.minecraft.client.renderer.GlStateManager.pushMatrix();

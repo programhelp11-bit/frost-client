@@ -56,16 +56,27 @@ public final class Qol {
             }
             if (q.fps_boost) {
                 savedParticles = mc.gameSettings.particleSetting;
-                mc.gameSettings.particleSetting = 1;
+                mc.gameSettings.particleSetting = 2;
+                savedVsync = mc.gameSettings.enableVsync;
+                savedLimit = mc.gameSettings.limitFramerate;
+                mc.gameSettings.enableVsync = false;
+                mc.gameSettings.limitFramerate = 260;
             }
             boostApplied = true;
         } else if (!boost && boostApplied) {
             if (savedRenderDistance > 0) mc.gameSettings.renderDistanceChunks = savedRenderDistance;
             mc.gameSettings.particleSetting = savedParticles;
+            if (savedLimit > 0) {
+                mc.gameSettings.enableVsync = savedVsync;
+                mc.gameSettings.limitFramerate = savedLimit;
+                savedLimit = 0;
+            }
             boostApplied = false;
         }
     }
 
+    private static boolean savedVsync;
+    private static int savedLimit;
     private static Boolean savedFancy;
     private static Boolean savedShadows;
     private static Integer savedAo;

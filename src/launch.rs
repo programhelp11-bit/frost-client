@@ -21,6 +21,8 @@ pub struct LaunchPlan {
     pub game_dir: PathBuf,
     /// Non-fatal problems (e.g. the Frost mod jar was not bundled).
     pub warnings: Vec<String>,
+    /// Raise process priority and prefer the discrete GPU (mod-free launch boosts).
+    pub boost: bool,
 }
 
 fn cp_separator() -> &'static str {
@@ -239,22 +241,45 @@ pub async fn prepare(
     } else {
         find_java(settings)?
     };
-    Ok(LaunchPlan { java, args, game_dir, warnings })
+    Ok(LaunchPlan { java, args, game_dir, warnings, boost: settings.launch_boost })
 }
 
 /// Start the game. stdout/stderr go to `<instance>/frost-latest.log`.
 pub fn spawn(plan: &LaunchPlan) -> Result<tokio::process::Child> {
     let log = std::fs::File::create(plan.game_dir.join("frost-latest.log"))?;
     let log_err = log.try_clone()?;
-    let child = tokio::process::Command::new(&plan.java)
-        .args(&plan.args)
+    let mut cmd = tokio::process::Command::new(&plan.java);
+    cmd.args(&plan.args)
         .current_dir(&plan.game_dir)
         .stdout(log)
         .stderr(log_err)
-        .kill_on_drop(false)
+        .kill_on_drop(false);
+    if plan.boost {
+        // Hybrid-graphics laptops: ask for the stronger GPU (harmless on single-GPU machines).
+        cmd.env("DRI_PRIME", "1").env("__NV_PRIME_RENDER_OFFLOAD", "1");
+        #[cfg(windows)]
+        {
+            prefer_discrete_gpu(&plan.java);
+            cmd.creation_flags(0x0000_0080); // HIGH_PRIORITY_CLASS
+        }
+    }
+    let child = cmd
         .spawn()
         .with_context(|| format!("start java at {}", plan.java))?;
     Ok(child)
+}
+
+/// Windows "Graphics settings" preference: high performance GPU for this javaw.exe.
+#[cfg(windows)]
+fn prefer_discrete_gpu(java: &str) {
+    use std::os::windows::process::CommandExt;
+    if !Path::new(java).is_absolute() {
+        return;
+    }
+    let _ = std::process::Command::new("reg")
+        .args(["add", r"HKCU\Software\Microsoft\DirectX\UserGpuPreferences", "/v", java, "/t", "REG_SZ", "/d", "GpuPreference=2;", "/f"])
+        .creation_flags(0x0800_0000)
+        .status();
 }
 
 fn find_java(settings: &Settings) -> Result<String> {

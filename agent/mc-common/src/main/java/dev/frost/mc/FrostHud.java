@@ -36,13 +36,15 @@ public final class FrostHud {
 
         // Auto layout: widgets stack down the left edge without overlapping, keystrokes sit bottom right.
         int cy = 6;
+        double gui = Math.max(1.0, mc.getWindow().getGuiScale());
+        float boost = (float) (Math.round(Math.max(1.0, Math.min(2.0, 3.0 / gui)) * 2.0) / 2.0);   // small GUI scales: bigger HUD text
         int gw = mc.getWindow().getGuiScaledWidth();
         int gh = mc.getWindow().getGuiScaledHeight();
         for (Models.Widget w : st.hud.widgets) {
             if (!w.enabled) continue;
             if (w.kind.equals("coordinates") && !q.show_coordinates && !q.show_biome) continue;
             boolean keys = w.kind.equals("keystrokes");
-            float sc = Math.max(0.5f, Math.min(3f, w.scale));
+            float sc = Math.max(0.5f, Math.min(3f, w.scale)) * boost;
             int px = keys ? gw - Math.round(70 * sc) : 6;
             int py = keys ? gh - Math.round(66 * sc) : cy;
             if (w.placed && w.pos != null && w.pos.length >= 2) {
@@ -116,11 +118,11 @@ public final class FrostHud {
                 int width = 0;
                 for (String[] r : rows) width = Math.max(width, font.width(r[0]) + 8 + font.width(r[1]));
                 int h = rows.size() * (font.lineHeight + 3) + 5;
-                panel(g, 0, 0, width + 18, h + 2, tint);
+                panel(g, 0, 0, width + 20, h + 2, tint);
                 int y = 5;
                 for (String[] r : rows) {
-                    g.drawString(font, r[0], 8, y + 1, ACCENT);
-                    g.drawString(font, r[1], 8 + font.width(r[0]) + 8, y + 1, TEXT);
+                    g.drawString(font, r[0], 9, y + 1, ACCENT);
+                    g.drawString(font, r[1], 9 + font.width(r[0]) + 8, y + 1, 0xFFFFFFFF);
                     y += font.lineHeight + 3;
                 }
             }
@@ -177,16 +179,21 @@ public final class FrostHud {
         g.drawString(font, label, x + (w - font.width(label)) / 2, y + (h - font.lineHeight) / 2 + 1, labelColor);
     }
 
-    /** Launcher glass card: frosted navy body (lighter at the top), ice border, soft blue glow. */
+    /** Frost chip: solid deep-navy body, ice accent bar on the left, icicles hanging from the bottom edge. */
     private static void panel(GuiGraphics g, int x, int y, int w, int h, int tint) {
         lastW = w;
         lastH = h;
-        int a = (tint >>> 24) & 0xFF;
-        roundedFill(g, x - 1, y - 1, w + 2, h + 2, 4, 0x1A2A56FF);                 // glow
-        roundedFill(g, x, y, w, h, 3, 0x408CBEFF);                                  // border
-        roundedFill(g, x + 1, y + 1, w - 2, h - 2, 2, (a << 24) | 0x0A1A44);        // body
-        g.fill(x + 2, y + 1, x + w - 2, y + 1 + Math.max(2, (h - 2) / 2), 0x1A3D6BFF); // frosted upper half
-        g.fill(x + 3, y + 1, x + w - 3, y + 2, 0x44DCF0FF);                          // sheen
+        int a = Math.max(0xD0, (tint >>> 24) & 0xFF);
+        roundedFill(g, x, y, w, h, 3, 0xFF2A5FA8);                                  // ice border
+        roundedFill(g, x + 1, y + 1, w - 2, h - 2, 2, (a << 24) | 0x071126);        // body
+        g.fill(x + 1, y + 3, x + 3, y + h - 3, 0xFF6EC8FF);                          // accent bar
+        g.fill(x + 3, y + 1, x + w - 3, y + 2, 0x30FFFFFF);                          // top frost line
+        int[] ice = {2, 1, 3, 1, 2, 1, 3, 2};
+        for (int i = 0, ix = x + 5; ix < x + w - 4; i++, ix += 4) {
+            int len = ice[i % ice.length];
+            g.fill(ix, y + h, ix + 2, y + h + len, 0xC8CFE8FF);
+            g.fill(ix, y + h + len, ix + 1, y + h + len + 1, 0x90FFFFFF);
+        }
     }
 
     /** 5x5 pixel snowflake, drawn with fills so it does not depend on font glyphs. */

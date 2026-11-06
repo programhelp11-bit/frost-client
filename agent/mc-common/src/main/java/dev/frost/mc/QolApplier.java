@@ -25,6 +25,10 @@ public final class QolApplier {
     private static Boolean lastMinimalView;
     private static boolean boostApplied;
     private static int savedRenderDistance = -1;
+    private static ParticleStatus boostParticles;
+    private static boolean boostAo, boostVsync;
+    private static int boostFps;
+    private static double boostEntity;
 
     /** Remembers the user's own value of an option while we override it. */
     private static final class Saved<T> {
@@ -122,12 +126,28 @@ public final class QolApplier {
                 if (savedRenderDistance > cap) mc.options.renderDistance().set(cap);
             }
             if (q.fps_boost) {
-                mc.options.particles().set(ParticleStatus.DECREASED);
-                mc.options.entityDistanceScaling().set(Math.min(0.75, mc.options.entityDistanceScaling().get()));
+                boostParticles = mc.options.particles().get();
+                boostAo = mc.options.ambientOcclusion().get();
+                boostVsync = mc.options.enableVsync().get();
+                boostFps = mc.options.framerateLimit().get();
+                boostEntity = mc.options.entityDistanceScaling().get();
+                mc.options.particles().set(ParticleStatus.MINIMAL);
+                mc.options.ambientOcclusion().set(false);
+                mc.options.enableVsync().set(false);
+                mc.options.framerateLimit().set(260);
+                mc.options.entityDistanceScaling().set(Math.min(0.6, boostEntity));
             }
             boostApplied = true;
         } else if (!boost && boostApplied) {
             if (savedRenderDistance > 0) mc.options.renderDistance().set(savedRenderDistance);
+            if (boostParticles != null) {
+                mc.options.particles().set(boostParticles);
+                mc.options.ambientOcclusion().set(boostAo);
+                mc.options.enableVsync().set(boostVsync);
+                mc.options.framerateLimit().set(boostFps);
+                mc.options.entityDistanceScaling().set(boostEntity);
+                boostParticles = null;
+            }
             boostApplied = false;
         }
     }

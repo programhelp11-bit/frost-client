@@ -694,6 +694,77 @@ async fn perf_group(st: State<'_, AppState>, mc: String, group: String, on: bool
     Ok(Value::Array(results))
 }
 
+// ------------------------------------------------------------------ Horizon (Rust Minecraft client, MIT)
+
+const HORIZON_REPO: &str = "https://github.com/horizon-rust/horizon.git";
+
+fn horizon_dir() -> std::path::PathBuf {
+    frost_client::config::data_dir().join("horizon")
+}
+
+fn tool_ok(cmd: &str) -> bool {
+    std::process::Command::new(cmd).arg("--version").output().map(|o| o.status.success()).unwrap_or(false)
+}
+
+/// What the Rust tab needs to know: toolchain present, source downloaded, prepared resources.
+#[tauri::command]
+fn rust_status() -> Value {
+    let dir = horizon_dir();
+    json!({
+        "git": tool_ok("git"),
+        "cargo": tool_ok("cargo"),
+        "java": tool_ok("java"),
+        "cloned": dir.join("Cargo.toml").exists(),
+        "prepared": dir.join(".local").exists(),
+        "dir": dir,
+    })
+}
+
+/// Download (or update) the Horizon source into the launcher's data folder.
+#[tauri::command]
+async fn rust_setup() -> Result<String, String> {
+    tokio::task::spawn_blocking(|| {
+        let dir = horizon_dir();
+        let out = if dir.join(".git").exists() {
+            std::process::Command::new("git").args(["pull", "--ff-only"]).current_dir(&dir).output()
+        } else {
+            let _ = std::fs::create_dir_all(dir.parent().unwrap_or(&dir));
+            std::process::Command::new("git").args(["clone", "--depth", "1", HORIZON_REPO]).arg(&dir).output()
+        }
+        .map_err(|e| format!("git is not available: {e}"))?;
+        if out.status.success() {
+            Ok("Horizon source is ready".to_string())
+        } else {
+            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Start Horizon in its own console window (`cargo run --release -p horizon-client`).
+/// `prepare` first extracts the resources from the player's own 26.3 server jar.
+#[tauri::command]
+fn rust_run(prepare: bool, server_jar: String) -> Result<(), String> {
+    let dir = horizon_dir();
+    if !dir.join("Cargo.toml").exists() {
+        return Err("Download Horizon first".into());
+    }
+    let mut script = String::new();
+    if prepare {
+        if server_jar.trim().is_empty() {
+            return Err("Pick the Minecraft 26.3 server.jar for the first-time setup".into());
+        }
+        script.push_str(&format!("cargo run --release -p horizon-prepare -- --prepare --server-jar \"{}\" && ", server_jar.trim()));
+    }
+    script.push_str("cargo run --release -p horizon-client");
+    #[cfg(windows)]
+    let child = std::process::Command::new("cmd").args(["/C", "start", "Horizon", "cmd", "/K", &script]).current_dir(&dir).spawn();
+    #[cfg(not(windows))]
+    let child = std::process::Command::new("sh").args(["-c", &script]).current_dir(&dir).spawn();
+    child.map(|_| ()).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn mr_installed(mc: String) -> Value {
     serde_json::to_value(modrinth::list_installed(&mc)).unwrap_or(Value::Null)
@@ -813,6 +884,9 @@ fn main() {
             mr_install,
             perf_status,
             perf_group,
+            rust_status,
+            rust_setup,
+            rust_run,
             mr_installed,
             mr_remove,
             open_instance_folder,

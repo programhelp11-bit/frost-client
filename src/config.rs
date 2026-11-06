@@ -63,6 +63,8 @@ pub struct Settings {
     pub auto_optimize: bool,
     /// Ask Minecraft 26.2+ for its experimental Vulkan renderer.
     pub perf_vulkan: bool,
+    /// High process priority + discrete GPU preference at launch.
+    pub launch_boost: bool,
 }
 
 impl Default for Settings {
@@ -82,6 +84,7 @@ impl Default for Settings {
             snow: true,
             auto_optimize: true,
             perf_vulkan: false,
+            launch_boost: true,
         }
     }
 }

@@ -32,11 +32,12 @@ public final class Hud {
         FontRenderer font = mc.fontRendererObj;
         int cy = 6;
         net.minecraft.client.gui.ScaledResolution res = new net.minecraft.client.gui.ScaledResolution(mc);
+        float boost = (float) (Math.round(Math.max(1.0, Math.min(2.0, 3.0 / Math.max(1, res.getScaleFactor()))) * 2.0) / 2.0);
         for (Models.Widget w : st.hud.widgets) {
             if (!w.enabled) continue;
             if (w.kind.equals("coordinates") && !q.show_coordinates && !q.show_biome) continue;
             boolean keys = w.kind.equals("keystrokes");
-            float sc = Math.max(0.5f, Math.min(3f, w.scale));
+            float sc = Math.max(0.5f, Math.min(3f, w.scale)) * boost;
             int px = keys ? res.getScaledWidth() - Math.round(70 * sc) : 6;
             int py = keys ? res.getScaledHeight() - Math.round(66 * sc) : cy;
             if (w.placed && w.pos != null && w.pos.length >= 2) {
@@ -101,11 +102,11 @@ public final class Hud {
         int width = 0;
         for (String[] r : rows) width = Math.max(width, font.getStringWidth(r[0]) + 8 + font.getStringWidth(r[1]));
         int h = rows.size() * (font.FONT_HEIGHT + 3) + 5;
-        panel(0, 0, width + 18, h + 2, tint);
+        panel(0, 0, width + 20, h + 2, tint);
         int y = 5;
         for (String[] r : rows) {
-            font.drawStringWithShadow(r[0], 8, y + 1, 0xFF8FD3FF);
-            font.drawStringWithShadow(r[1], 8 + font.getStringWidth(r[0]) + 8, y + 1, TEXT);
+            font.drawStringWithShadow(r[0], 9, y + 1, 0xFF8FD3FF);
+            font.drawStringWithShadow(r[1], 9 + font.getStringWidth(r[0]) + 8, y + 1, 0xFFFFFFFF);
             y += font.FONT_HEIGHT + 3;
         }
     }
@@ -151,15 +152,21 @@ public final class Hud {
         font.drawStringWithShadow(label, x + (w - font.getStringWidth(label)) / 2, y + (h - font.FONT_HEIGHT) / 2 + 1, labelColor);
     }
 
+    /** Frost chip: solid deep-navy body, ice accent bar on the left, icicles hanging from the bottom edge. */
     private static void panel(int x, int y, int w, int h, int tint) {
         lastW = w;
         lastH = h;
-        int a = (tint >>> 24) & 0xFF;
-        roundedFill(x - 1, y - 1, w + 2, h + 2, 4, 0x1A2A56FF);
-        roundedFill(x, y, w, h, 3, 0x408CBEFF);
-        roundedFill(x + 1, y + 1, w - 2, h - 2, 2, (a << 24) | 0x0A1A44);
-        Gui.drawRect(x + 2, y + 1, x + w - 2, y + 1 + Math.max(2, (h - 2) / 2), 0x1A3D6BFF);
-        Gui.drawRect(x + 3, y + 1, x + w - 3, y + 2, 0x44DCF0FF);
+        int a = Math.max(0xD0, (tint >>> 24) & 0xFF);
+        roundedFill(x, y, w, h, 3, 0xFF2A5FA8);                                  // ice border
+        roundedFill(x + 1, y + 1, w - 2, h - 2, 2, (a << 24) | 0x071126);        // body
+        Gui.drawRect(x + 1, y + 3, x + 3, y + h - 3, 0xFF6EC8FF);                          // accent bar
+        Gui.drawRect(x + 3, y + 1, x + w - 3, y + 2, 0x30FFFFFF);                          // top frost line
+        int[] ice = {2, 1, 3, 1, 2, 1, 3, 2};
+        for (int i = 0, ix = x + 5; ix < x + w - 4; i++, ix += 4) {
+            int len = ice[i % ice.length];
+            Gui.drawRect(ix, y + h, ix + 2, y + h + len, 0xC8CFE8FF);
+            Gui.drawRect(ix, y + h + len, ix + 1, y + h + len + 1, 0x90FFFFFF);
+        }
     }
 
     private static void roundedFill(int x, int y, int w, int h, int r, int color) {

@@ -109,10 +109,11 @@ function render() {
     browse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg>',
     cosmetics: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m12 3 2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.4 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/></svg>',
     skinedit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 20l4-1L19 8l-3-3L5 16z"/><path d="M14 7l3 3"/></svg>',
-    perf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M13 3 5 13h6l-1 8 8-10h-6z"/></svg>',
+    rust: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>',
+  perf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M13 3 5 13h6l-1 8 8-10h-6z"/></svg>',
     capeedit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M8 4h8l3 4-2 12H7L5 8z"/><path d="M9 4c0 2 6 2 6 0"/></svg>',
   };
-  const nav = [['home', 'Home'], ['versions', 'Versions'], ['browse', 'Browse'], ['cosmetics', 'Cape'], ['skinedit', 'Skin editor'], ['capeedit', 'Cape editor'], ['perf', 'Performance']];
+  const nav = [['home', 'Home'], ['versions', 'Versions'], ['browse', 'Browse'], ['cosmetics', 'Cape'], ['skinedit', 'Skin editor'], ['capeedit', 'Cape editor'], ['perf', 'Performance'], ['rust', 'Rust']];
   $('#app').innerHTML = `
     <div class="shell">
       <aside class="rail">
@@ -138,7 +139,7 @@ function render() {
 function renderView() {
   const v = $('#view');
   if (!v) return;
-  const pages = { home: pageHome, versions: pageVersions, browse: pageBrowse, cosmetics: pageCosmetics, skinedit: pageSkinEditor, capeedit: pageCapeEditor, perf: pagePerf, settings: pageSettings };
+  const pages = { home: pageHome, versions: pageVersions, browse: pageBrowse, cosmetics: pageCosmetics, skinedit: pageSkinEditor, capeedit: pageCapeEditor, perf: pagePerf, rust: pageRust, settings: pageSettings };
   v.innerHTML = pages[S.page]();
   if (typeof studioMount === 'function') studioMount();
   if (S.page === 'browse') browseLoadIfNeeded();
@@ -300,6 +301,30 @@ async function mrSearch() {
 }
 
 
+/* ------------------------------------------------------------------ rust (Horizon) */
+function pageRust() {
+  const R = S.rust || null;
+  if (!R) rustLoad();
+  const pill = (ok, t) => `<span class="pill ${ok ? 'ok' : ''}"><i></i>${t}</span>`;
+  const busy = S.rustBusy;
+  return `<h1 class="page-title">Rust</h1>
+    <div class="page-sub">Horizon is an open-source (MIT) Minecraft Java client written entirely in Rust, for Minecraft 26.3. Frost downloads the source and starts it for you.</div>
+    ${setGroup('TOOLCHAIN',
+      setRow('Git', 'Needed to download Horizon.', pill(R && R.git, R && R.git ? 'Found' : 'Missing')),
+      setRow('Rust (cargo)', 'Rust 1.90 or newer builds the client. Get it at rustup.rs.', pill(R && R.cargo, R && R.cargo ? 'Found' : 'Missing')),
+      setRow('Java (JDK 25)', 'Only used once, to prepare the resources from your own copy of the game.', pill(R && R.java, R && R.java ? 'Found' : 'Missing')))}
+    ${setGroup('HORIZON',
+      setRow('Source code', 'Downloaded into the Frost data folder. Press again to update it.', busy === 'setup' ? '<span class="spin"></span>' : `${pill(R && R.cloned, R && R.cloned ? 'Downloaded' : 'Not yet')}<button class="btn sm" data-act="rust-setup">${R && R.cloned ? 'Update' : 'Download'}</button>`),
+      setRow('First start', 'Horizon contains no Minecraft files. Pick the 26.3 server.jar once so it can extract them. Play 26.3 once in the official launcher first.', `<input class="input" id="rust-jar" placeholder="path to server.jar" value="${esc(S.rustJar || '')}" style="width:220px">`),
+      setRow('Play', 'The first build takes several minutes. Horizon opens in its own window.', `<button class="btn sm" data-act="rust-run" data-prep="1">Prepare &amp; start</button><button class="btn ghost sm" data-act="rust-run" data-prep="0">Start</button>`))}
+    <p class="muted-note">Horizon is a separate project (github.com/horizon-rust/horizon) and an early one, so expect rough edges. Frost's capes, HUD and bots only exist in the Frost mods.</p>`;
+}
+async function rustLoad() {
+  S.rust = { loading: true };
+  try { S.rust = await inv('rust_status'); } catch (e) { S.rust = {}; }
+  if (S.page === 'rust') renderView();
+}
+
 /* ------------------------------------------------------------------ performance */
 function pagePerf() {
   const c = S.cfg, v = S.sel, P = (S.perf && S.perf[v]) || null, fabric = loaderOf(v) === 'Fabric';
@@ -316,7 +341,12 @@ function pagePerf() {
     <div class="line" style="margin-bottom:6px"><div class="seg">${vers}</div></div>
     ${setGroup('BUILT-IN',
       setRow('Auto FPS boost', 'Before each launch: fast graphics, no clouds or shadows, no vsync, render distance 8. Works on every version.', tog('auto_optimize', c.auto_optimize !== false)),
-      setRow('Vulkan renderer', 'Minecraft 26.2 only. Asks the game for its experimental Vulkan backend, and falls back to OpenGL on GPUs without Vulkan.', tog('perf_vulkan', !!c.perf_vulkan)))}
+      setRow('Vulkan renderer', 'Minecraft 26.2 only. Asks the game for its experimental Vulkan backend, and falls back to OpenGL on GPUs without Vulkan.', tog('perf_vulkan', !!c.perf_vulkan)),
+      setRow('Launch boost', 'High CPU priority for the game and the stronger GPU on laptops with two graphics chips.', tog('launch_boost', c.launch_boost !== false)))}
+    ${setGroup('WHAT THE BOOST CHANGES',
+      setRow('Video options', 'Fast graphics, no smooth lighting, clouds, shadows or biome blend; particles minimal; mipmaps off; vsync off; no screen/FOV/darkness/glint effects; no chunk fade-in; render distance 8, simulation 6; idle FPS limit.', ''),
+      setRow('Java memory', 'Tuned G1 collector (short pauses, early cycles) and a heap that fits your RAM setting under Settings. 2-4 GB is the sweet spot; more only makes pauses longer.', ''),
+      setRow('Do it yourself', 'Plug in the laptop and use the High performance power plan, close browsers and overlays, play at a lower resolution if frames are still low, and keep the game on the discrete GPU.', ''))}
     ${setGroup('FAST MODS' + (fabric ? '' : ' (FABRIC VERSIONS)'),
       grp('renderer', 'Fast renderer', 'Much faster chunk and entity drawing.', 'Sodium · ImmediatelyFast · Entity Culling'),
       grp('logic', 'Fast math &amp; logic', 'Quicker game logic, collision, lighting math and lower memory use.', 'Lithium · FerriteCore · ModernFix'))}
@@ -414,6 +444,16 @@ const ACTIONS = {
   },
   'goto-settings-mc': () => { S.page = 'settings'; S.settingsTab = 'java'; render(); },
   'goto-browse': () => { S.page = 'browse'; S.mr.mc = S.sel; S.mr.page = null; render(); },
+  'rust-setup': async () => {
+    S.rustBusy = 'setup'; renderView();
+    try { toast(await inv('rust_setup'), 'ok'); } catch (e) { toast(e, 'err'); }
+    S.rustBusy = null; await rustLoad();
+  },
+  'rust-run': async el => {
+    const jar = (document.getElementById('rust-jar') || {}).value || '';
+    S.rustJar = jar;
+    try { await inv('rust_run', { prepare: el.dataset.prep === '1', serverJar: jar }); toast('Horizon is starting', 'ok'); } catch (e) { toast(e, 'err'); }
+  },
   'perf-ver': el => { S.sel = el.dataset.v; renderView(); },
   'perf-group': async el => {
     const g = el.dataset.g, on = el.dataset.on === '1';
