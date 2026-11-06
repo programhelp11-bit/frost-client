@@ -694,75 +694,105 @@ async fn perf_group(st: State<'_, AppState>, mc: String, group: String, on: bool
     Ok(Value::Array(results))
 }
 
-// ------------------------------------------------------------------ Horizon (Rust Minecraft client, MIT)
-
-const HORIZON_REPO: &str = "https://github.com/horizon-rust/horizon.git";
+// ------------------------------------------------------------------ Horizon (Minecraft rebuilt in Rust, playhorizon.dev)
 
 fn horizon_dir() -> std::path::PathBuf {
-    frost_client::config::data_dir().join("horizon")
+    frost_client::config::data_dir().join("horizon-launcher")
 }
 
-fn tool_ok(cmd: &str) -> bool {
-    std::process::Command::new(cmd).arg("--version").output().map(|o| o.status.success()).unwrap_or(false)
+/// Executable of the installed Horizon launcher, if we can find one.
+fn horizon_exe() -> Option<std::path::PathBuf> {
+    fn scan(dir: &std::path::Path, depth: u8) -> Option<std::path::PathBuf> {
+        for e in std::fs::read_dir(dir).ok()?.flatten() {
+            let p = e.path();
+            let name = e.file_name().to_string_lossy().to_lowercase();
+            if p.is_dir() && depth > 0 {
+                if let Some(f) = scan(&p, depth - 1) {
+                    return Some(f);
+                }
+            } else if p.is_file() && name.contains("horizon") && !name.contains("setup") && !name.contains("unins") {
+                let ok = if cfg!(windows) {
+                    name.ends_with(".exe")
+                } else {
+                    use std::os::unix::fs::PermissionsExt;
+                    !name.contains('.') && std::fs::metadata(&p).map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(false)
+                };
+                if ok {
+                    return Some(p);
+                }
+            }
+        }
+        None
+    }
+    let mut roots = vec![horizon_dir()];
+    if let Some(l) = dirs_local() {
+        roots.push(l.join("Programs"));
+    }
+    roots.into_iter().find_map(|r| scan(&r, 3))
 }
 
-/// What the Rust tab needs to know: toolchain present, source downloaded, prepared resources.
+fn dirs_local() -> Option<std::path::PathBuf> {
+    std::env::var_os("LOCALAPPDATA").map(std::path::PathBuf::from)
+}
+
 #[tauri::command]
 fn rust_status() -> Value {
-    let dir = horizon_dir();
     json!({
-        "git": tool_ok("git"),
-        "cargo": tool_ok("cargo"),
-        "java": tool_ok("java"),
-        "cloned": dir.join("Cargo.toml").exists(),
-        "prepared": dir.join(".local").exists(),
-        "dir": dir,
+        "os": std::env::consts::OS,
+        "installed": horizon_exe().is_some(),
+        "downloaded": horizon_dir().join(".downloaded").exists(),
     })
 }
 
-/// Download (or update) the Horizon source into the launcher's data folder.
+/// Download the official Horizon launcher (latest `launcher@*` release) and install it.
 #[tauri::command]
-async fn rust_setup() -> Result<String, String> {
-    tokio::task::spawn_blocking(|| {
-        let dir = horizon_dir();
-        let out = if dir.join(".git").exists() {
-            std::process::Command::new("git").args(["pull", "--ff-only"]).current_dir(&dir).output()
-        } else {
-            let _ = std::fs::create_dir_all(dir.parent().unwrap_or(&dir));
-            std::process::Command::new("git").args(["clone", "--depth", "1", HORIZON_REPO]).arg(&dir).output()
+async fn rust_install(st: State<'_, AppState>) -> Result<String, String> {
+    let want = if cfg!(windows) { "horizon-launcher-setup.exe" } else { "horizon-launcher-linux-x86_64.tar.gz" };
+    if !cfg!(windows) && !cfg!(target_os = "linux") {
+        return Err("Horizon has no launcher for this system yet".into());
+    }
+    let ua = format!("FrostClient/{}", env!("CARGO_PKG_VERSION"));
+    let mut url = format!("https://github.com/horizon-rust/horizon/releases/download/launcher%400.2.42/{want}");
+    if let Ok(resp) = st.http.get("https://api.github.com/repos/horizon-rust/horizon/releases?per_page=40").header("User-Agent", &ua).send().await {
+        if let Ok(list) = resp.json::<Value>().await {
+            let found = list.as_array().into_iter().flatten()
+                .filter(|r| r["tag_name"].as_str().map(|t| t.starts_with("launcher@")).unwrap_or(false) && r["prerelease"] != true)
+                .find_map(|r| r["assets"].as_array()?.iter().find(|a| a["name"] == want).and_then(|a| a["browser_download_url"].as_str().map(str::to_owned)));
+            if let Some(u) = found {
+                url = u;
+            }
         }
-        .map_err(|e| format!("git is not available: {e}"))?;
-        if out.status.success() {
-            Ok("Horizon source is ready".to_string())
-        } else {
-            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
-        }
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-/// Start Horizon in its own console window (`cargo run --release -p horizon-client`).
-/// `prepare` first extracts the resources from the player's own 26.3 server jar.
-#[tauri::command]
-fn rust_run(prepare: bool, server_jar: String) -> Result<(), String> {
+    }
+    let bytes = st.http.get(&url).header("User-Agent", &ua).send().await
+        .and_then(|r| r.error_for_status())
+        .map_err(|e| format!("Download failed: {e}"))?
+        .bytes().await.map_err(|e| format!("Download failed: {e}"))?;
     let dir = horizon_dir();
-    if !dir.join("Cargo.toml").exists() {
-        return Err("Download Horizon first".into());
-    }
-    let mut script = String::new();
-    if prepare {
-        if server_jar.trim().is_empty() {
-            return Err("Pick the Minecraft 26.3 server.jar for the first-time setup".into());
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let file = dir.join(want);
+    std::fs::write(&file, &bytes).map_err(|e| e.to_string())?;
+    let _ = std::fs::write(dir.join(".downloaded"), b"1");
+    if cfg!(windows) {
+        std::process::Command::new(&file).spawn().map_err(|e| format!("Could not start the installer: {e}"))?;
+        Ok("The Horizon installer is open - finish it, then press Play".into())
+    } else {
+        let out = std::process::Command::new("tar").arg("xzf").arg(&file).arg("-C").arg(&dir).output().map_err(|e| e.to_string())?;
+        if !out.status.success() {
+            return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
         }
-        script.push_str(&format!("cargo run --release -p horizon-prepare -- --prepare --server-jar \"{}\" && ", server_jar.trim()));
+        Ok("Horizon is installed".into())
     }
-    script.push_str("cargo run --release -p horizon-client");
-    #[cfg(windows)]
-    let child = std::process::Command::new("cmd").args(["/C", "start", "Horizon", "cmd", "/K", &script]).current_dir(&dir).spawn();
-    #[cfg(not(windows))]
-    let child = std::process::Command::new("sh").args(["-c", &script]).current_dir(&dir).spawn();
-    child.map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// Start the Horizon launcher (it installs Horizon, prepares the game from the player's own Minecraft copy and plays it).
+#[tauri::command]
+fn rust_run() -> Result<(), String> {
+    let exe = horizon_exe().ok_or("Install Horizon first")?;
+    std::process::Command::new(&exe)
+        .current_dir(exe.parent().unwrap_or(std::path::Path::new(".")))
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -885,7 +915,7 @@ fn main() {
             perf_status,
             perf_group,
             rust_status,
-            rust_setup,
+            rust_install,
             rust_run,
             mr_installed,
             mr_remove,

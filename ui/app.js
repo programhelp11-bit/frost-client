@@ -305,19 +305,16 @@ async function mrSearch() {
 function pageRust() {
   const R = S.rust || null;
   if (!R) rustLoad();
-  const pill = (ok, t) => `<span class="pill ${ok ? 'ok' : ''}"><i></i>${t}</span>`;
-  const busy = S.rustBusy;
+  const busy = S.rustBusy, ok = R && R.installed;
+  const pill = (on, t) => `<span class="pill ${on ? 'ok' : ''}"><i></i>${t}</span>`;
   return `<h1 class="page-title">Rust</h1>
-    <div class="page-sub">Horizon is an open-source (MIT) Minecraft Java client written entirely in Rust, for Minecraft 26.3. Frost downloads the source and starts it for you.</div>
-    ${setGroup('TOOLCHAIN',
-      setRow('Git', 'Needed to download Horizon.', pill(R && R.git, R && R.git ? 'Found' : 'Missing')),
-      setRow('Rust (cargo)', 'Rust 1.90 or newer builds the client. Get it at rustup.rs.', pill(R && R.cargo, R && R.cargo ? 'Found' : 'Missing')),
-      setRow('Java (JDK 25)', 'Only used once, to prepare the resources from your own copy of the game.', pill(R && R.java, R && R.java ? 'Found' : 'Missing')))}
+    <div class="page-sub">Horizon is Minecraft: Java Edition 26.3 rebuilt from scratch in Rust: free, open source, and far lighter than the Java game. Frost installs and starts it for you.</div>
     ${setGroup('HORIZON',
-      setRow('Source code', 'Downloaded into the Frost data folder. Press again to update it.', busy === 'setup' ? '<span class="spin"></span>' : `${pill(R && R.cloned, R && R.cloned ? 'Downloaded' : 'Not yet')}<button class="btn sm" data-act="rust-setup">${R && R.cloned ? 'Update' : 'Download'}</button>`),
-      setRow('First start', 'Horizon contains no Minecraft files. Pick the 26.3 server.jar once so it can extract them. Play 26.3 once in the official launcher first.', `<input class="field" id="rust-jar" placeholder="path to server.jar" value="${esc(S.rustJar || '')}" style="width:220px;user-select:text">`),
-      setRow('Play', 'The first build takes several minutes. Horizon opens in its own window.', `<button class="btn sm" data-act="rust-run" data-prep="1">Prepare &amp; start</button><button class="btn ghost sm" data-act="rust-run" data-prep="0">Start</button>`))}
-    <p class="muted-note">Horizon is a separate project (github.com/horizon-rust/horizon) and an early one, so expect rough edges. Frost's capes, HUD and bots only exist in the Frost mods.</p>`;
+      setRow('Install', 'Downloads the official Horizon launcher from playhorizon.dev (GitHub release). Press again to update.', busy === 'install' ? '<span class="spin"></span>' : `${pill(ok, ok ? 'Installed' : 'Not yet')}<button class="btn ${ok ? 'ghost' : ''} sm" data-act="rust-install">${ok ? 'Update' : 'Install'}</button>`),
+      setRow('Play', 'Opens the Horizon launcher. On first start it prepares the game from your own Minecraft 26.3 files, which takes a few minutes.', `<button class="btn sm" data-act="rust-run">Play Horizon</button>`))}
+    ${setGroup('GOOD TO KNOW',
+      setRow('You need Minecraft', 'Horizon contains no Minecraft files. Install Java Edition with the official launcher and play 26.3 once.', ''),
+      setRow('Separate game', 'Frost capes, HUD and bots are mods for the Java game; Horizon runs on its own. It is an early project, so expect rough edges.', ''))}`;
 }
 async function rustLoad() {
   S.rust = { loading: true };
@@ -444,15 +441,13 @@ const ACTIONS = {
   },
   'goto-settings-mc': () => { S.page = 'settings'; S.settingsTab = 'java'; render(); },
   'goto-browse': () => { S.page = 'browse'; S.mr.mc = S.sel; S.mr.page = null; render(); },
-  'rust-setup': async () => {
-    S.rustBusy = 'setup'; renderView();
-    try { toast(await inv('rust_setup'), 'ok'); } catch (e) { toast(e, 'err'); }
+  'rust-install': async () => {
+    S.rustBusy = 'install'; renderView();
+    try { toast(await inv('rust_install'), 'ok'); } catch (e) { toast(e, 'err'); }
     S.rustBusy = null; await rustLoad();
   },
-  'rust-run': async el => {
-    const jar = (document.getElementById('rust-jar') || {}).value || '';
-    S.rustJar = jar;
-    try { await inv('rust_run', { prepare: el.dataset.prep === '1', serverJar: jar }); toast('Horizon is starting', 'ok'); } catch (e) { toast(e, 'err'); }
+  'rust-run': async () => {
+    try { await inv('rust_run'); toast('Horizon is starting', 'ok'); } catch (e) { toast(e, 'err'); }
   },
   'perf-ver': el => { S.sel = el.dataset.v; renderView(); },
   'perf-group': async el => {
