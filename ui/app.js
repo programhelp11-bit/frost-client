@@ -305,16 +305,18 @@ async function mrSearch() {
 function pageRust() {
   const R = S.rust || null;
   if (!R) rustLoad();
-  const busy = S.rustBusy, ok = R && R.installed;
+  const busy = S.rustBusy;
   const pill = (on, t) => `<span class="pill ${on ? 'ok' : ''}"><i></i>${t}</span>`;
   return `<h1 class="page-title">Rust</h1>
-    <div class="page-sub">Horizon is Minecraft: Java Edition 26.3 rebuilt from scratch in Rust: free, open source, and far lighter than the Java game. Frost installs and starts it for you.</div>
+    <div class="page-sub">Minecraft: Java Edition 26.3 rebuilt in Rust (Horizon, MIT, open source). Frost takes the game's source from GitHub, builds it and starts the game itself.</div>
+    ${setGroup('TOOLS',
+      setRow('Git', 'Downloads the game from GitHub.', pill(R && R.git, R && R.git ? 'Found' : 'Missing')),
+      setRow('Rust (cargo)', 'Builds the game. Rust 1.90 or newer, from rustup.rs.', pill(R && R.cargo, R && R.cargo ? 'Found' : 'Missing')),
+      setRow('Java (JDK 25)', 'Used once, to prepare the game data.', pill(R && R.java, R && R.java ? 'Found' : 'Missing')))}
     ${setGroup('HORIZON',
-      setRow('Install', 'Downloads the official Horizon launcher from playhorizon.dev (GitHub release). Press again to update.', busy === 'install' ? '<span class="spin"></span>' : `${pill(ok, ok ? 'Installed' : 'Not yet')}<button class="btn ${ok ? 'ghost' : ''} sm" data-act="rust-install">${ok ? 'Update' : 'Install'}</button>`),
-      setRow('Play', 'Opens the Horizon launcher. On first start it prepares the game from your own Minecraft 26.3 files, which takes a few minutes.', `<button class="btn sm" data-act="rust-run">Play Horizon</button>`))}
-    ${setGroup('GOOD TO KNOW',
-      setRow('You need Minecraft', 'Horizon contains no Minecraft files. Install Java Edition with the official launcher and play 26.3 once.', ''),
-      setRow('Separate game', 'Frost capes, HUD and bots are mods for the Java game; Horizon runs on its own. It is an early project, so expect rough edges.', ''))}`;
+      setRow('Game source', 'github.com/horizon-rust/horizon. Press again to update.', busy === 'setup' ? '<span class="spin"></span>' : `${pill(R && R.cloned, R && R.cloned ? 'Downloaded' : 'Not yet')}<button class="btn ${R && R.cloned ? 'ghost' : ''} sm" data-act="rust-setup">${R && R.cloned ? 'Update' : 'Download'}</button>`),
+      setRow('Play', 'Builds and opens the game. The first start also fetches Mojang\'s 26.3 data and takes several minutes.', `<button class="btn sm" data-act="rust-run">Play Horizon</button>`))}
+    <p class="muted-note">Horizon has no Minecraft files of its own: you need Minecraft Java Edition, and 26.3 played once in the official launcher. It is an early project, and Frost's capes, HUD and bots only exist in the Java mods.</p>`;
 }
 async function rustLoad() {
   S.rust = { loading: true };
@@ -441,13 +443,13 @@ const ACTIONS = {
   },
   'goto-settings-mc': () => { S.page = 'settings'; S.settingsTab = 'java'; render(); },
   'goto-browse': () => { S.page = 'browse'; S.mr.mc = S.sel; S.mr.page = null; render(); },
-  'rust-install': async () => {
-    S.rustBusy = 'install'; renderView();
-    try { toast(await inv('rust_install'), 'ok'); } catch (e) { toast(e, 'err'); }
+  'rust-setup': async () => {
+    S.rustBusy = 'setup'; renderView();
+    try { toast(await inv('rust_setup'), 'ok'); } catch (e) { toast(e, 'err'); }
     S.rustBusy = null; await rustLoad();
   },
   'rust-run': async () => {
-    try { await inv('rust_run'); toast('Horizon is starting', 'ok'); } catch (e) { toast(e, 'err'); }
+    try { toast(await inv('rust_run'), 'ok'); } catch (e) { toast(e, 'err'); }
   },
   'perf-ver': el => { S.sel = el.dataset.v; renderView(); },
   'perf-group': async el => {
