@@ -12,7 +12,6 @@
 //! - [`ipc`]          local JSON-lines bridge between launcher and in-game agent
 
 pub mod auth;
-pub mod botlab;
 pub mod config;
 pub mod cosmetics;
 pub mod downloader;

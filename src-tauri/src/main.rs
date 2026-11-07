@@ -7,7 +7,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use base64::Engine;
 use std::collections::HashMap;
 use frost_client::auth::{self, Account, AccountStore};
-use frost_client::botlab::{self, Lab};
 use frost_client::config::Settings;
 use frost_client::cosmetics::{self, FrostApi, SkinVariant};
 use frost_client::downloader::Progress;
@@ -42,9 +41,6 @@ struct AppState {
     /// Cape the player currently wears (`frost`, `none` or a community id).
     active_cape: Mutex<String>,
     uploaded_capes: Mutex<HashMap<String, String>>,
-    /// Self-play bot trainer (keeps improving while the launcher is open).
-    lab: Mutex<Lab>,
-    lab_on: AtomicBool,
 }
 
 fn err<E: std::fmt::Display>(e: E) -> String {
@@ -79,83 +75,6 @@ fn push_settings(st: &AppState) {
         let s = st.settings.lock().unwrap();
         ipc.send(ToGame::Settings { qol: s.qol.clone(), hud: s.hud.clone() });
     }
-    push_policy(st);
-}
-
-/// Send the bots' trained tactics to the game.
-fn push_policy(st: &AppState) {
-    let Some(ipc) = &st.ipc else { return };
-    let lab = st.lab.lock().unwrap();
-    ipc.send(ToGame::BotPolicy { params: lab.params(), generation: lab.generation });
-}
-
-/// Background trainer: a few generations every couple of seconds, saved and pushed to the game.
-fn spawn_botlab(handle: AppHandle) {
-    tauri::async_runtime::spawn(async move {
-        let mut rounds = 0u32;
-        loop {
-            tokio::time::sleep(Duration::from_secs(2)).await;
-            let st = handle.state::<AppState>();
-            if !st.lab_on.load(Ordering::Relaxed) {
-                continue;
-            }
-            let mut lab = st.lab.lock().unwrap().clone();
-            let lab = tokio::task::spawn_blocking(move || {
-                lab.run(3);
-                lab
-            })
-            .await;
-            let Ok(lab) = lab else { continue };
-            rounds += 1;
-            if rounds % 10 == 0 {
-                lab.save();
-            }
-            if rounds % 5 == 0 {
-                *st.lab.lock().unwrap() = lab;
-                push_policy(&st);
-                let _ = handle.emit("botlab-updated", ());
-            } else {
-                *st.lab.lock().unwrap() = lab;
-            }
-        }
-    });
-}
-
-#[tauri::command]
-fn botlab_status(st: State<'_, AppState>) -> Value {
-    let lab = st.lab.lock().unwrap();
-    let params: Vec<Value> = botlab::SPECS
-        .iter()
-        .zip(lab.params())
-        .map(|(sp, v)| json!({ "name": sp.name, "value": v, "min": sp.min, "max": sp.max, "default": sp.def }))
-        .collect();
-    json!({
-        "running": st.lab_on.load(Ordering::Relaxed),
-        "generation": lab.generation,
-        "win_rate": lab.win_rate,
-        "baseline_rate": lab.baseline_rate,
-        "history": lab.history,
-        "params": params,
-        "connected": st.ipc.as_ref().map(|i| i.connected()).unwrap_or(false),
-    })
-}
-
-#[tauri::command]
-fn botlab_toggle(st: State<'_, AppState>, on: bool) {
-    st.lab_on.store(on, Ordering::Relaxed);
-    if !on {
-        st.lab.lock().unwrap().save();
-    }
-}
-
-#[tauri::command]
-fn botlab_reset(st: State<'_, AppState>) {
-    {
-        let mut lab = st.lab.lock().unwrap();
-        lab.reset();
-        lab.save();
-    }
-    push_policy(&st);
 }
 
 fn ipc_of(st: &AppState) -> Result<&IpcHandle, String> {
@@ -894,10 +813,7 @@ fn main() {
                 api_cache: Mutex::new(None),
                 active_cape: Mutex::new("frost".to_owned()),
                 uploaded_capes: Mutex::new(HashMap::new()),
-                lab: Mutex::new(Lab::load()),
-                lab_on: AtomicBool::new(true),
             });
-            spawn_botlab(app.handle().clone());
             spawn_cosmetics_sync(app.handle().clone());
 
             // Push HUD/QoL settings whenever the game connects and tell the UI about it.
@@ -960,9 +876,6 @@ fn main() {
             perf_group,
             pack_install,
             pack_status,
-            botlab_status,
-            botlab_toggle,
-            botlab_reset,
             mr_installed,
             mr_remove,
             open_instance_folder,

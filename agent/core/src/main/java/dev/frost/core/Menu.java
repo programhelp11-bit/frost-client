@@ -21,41 +21,28 @@ public final class Menu {
         int lineHeight();
     }
 
-    /** Actions that need the game or the launcher. */
+    /** Called whenever a setting changes (the game saves the config). */
     public interface Host {
         void settingsChanged();
-
-        void requestBot(String style, float difficulty, String arena, boolean kit);
-
-        void clearBots();
-
-        boolean launcherConnected();
     }
 
-    public enum Tab { HUD, TRAINER, GAMEPLAY, PERFORMANCE }
+    public enum Tab { HUD, GAMEPLAY, PERFORMANCE }
 
     // launcher palette
     static final int TEXT = 0xFFEAF2FF;
     static final int DIM = 0xFF8FA6C8;
-    static final int ACCENT = 0xFF8FD3FF;
+    static final int ACCENT = 0xFF00D2FF;
     static final int BLUE = 0xFF3D6BFF;
     static final int LINE = 0x388CBEFF;
     static final int CARD = 0x2A12285A;
     static final int HOVER = 0x2E3D6BFF;
-
-    public static final String[] STYLES = {"sword", "crystal", "axe_shield", "mace", "bedwars_rush"};
-    public static final String[] STYLE_NAMES = {"Sword", "Crystal", "Axe & Shield", "Mace", "Bedwars rush"};
 
     private static final int ROW_H = 30;
     private static final int ROW_GAP = 4;
 
     private final Host host;
     private final FrostState state;
-    public Tab tab = Tab.TRAINER;
-    public int styleIdx;
-    public int arenaIdx;
-    public boolean kit;
-    public float difficulty = 0.8f;
+    public Tab tab = Tab.HUD;
     public String message = "";
     /** GUI scale factor the screen applies on top of Minecraft's (text size); coordinates here are divided by it. */
     public float ui = 1f;
@@ -123,7 +110,7 @@ public final class Menu {
             selected = "";
             return;
         }
-        card(c, x, y, w, h, 0xC0081634, 0x4A8CBEFF);
+        card(c, x, y, w, h, 0xC0081634, 0x7000D2FF);
         rfill(c, x + 1, y + 1, sb - 1, h - 2, 3, 0xDD050B1E);
         c.fill(x + sb - 4, y + 1, x + sb, y + h - 1, 0xDD050B1E);
         c.fill(x + sb, y + 1, x + sb + 1, y + h - 1, LINE);
@@ -133,8 +120,8 @@ public final class Menu {
         c.text("F R O S T", x + 28, y + 12, TEXT);
 
         // navigation
-        String[] names = {"HUD", "Trainer", "Gameplay", "Performance"};
-        Tab[] tabs = {Tab.HUD, Tab.TRAINER, Tab.GAMEPLAY, Tab.PERFORMANCE};
+        String[] names = {"HUD", "Gameplay", "Performance"};
+        Tab[] tabs = {Tab.HUD, Tab.GAMEPLAY, Tab.PERFORMANCE};
         for (int i = 0; i < tabs.length; i++) {
             int ny = y + 40 + i * 26;
             boolean on = tab == tabs[i];
@@ -151,16 +138,17 @@ public final class Menu {
                 scroll = 0;
             }
         }
-        c.text("Esc to close", x + 14, y + h - 18, DIM);
+        c.text("Esc to close", x + 14, y + h - 30, DIM);
+        c.text("Frost Client v1.8.9", x + 14, y + h - 18, ACCENT);
+        c.text("by frostbyte254", x + 14, y + h - 9, DIM);
 
         // content
         cx = x + sb + 16;
         cw = w - sb - 32;
-        String title = tab == Tab.HUD ? "HUD" : tab == Tab.TRAINER ? "Trainer" : tab == Tab.GAMEPLAY ? "Gameplay" : "Performance";
+        String title = tab == Tab.HUD ? "HUD" : tab == Tab.GAMEPLAY ? "Gameplay" : "Performance";
         c.text(title, cx, y + 14, TEXT);
         c.text(title, cx + 1, y + 14, TEXT);
         String sub = tab == Tab.HUD ? "Choose what is shown on screen."
-            : tab == Tab.TRAINER ? "Practice against bots. Singleplayer only."
             : tab == Tab.GAMEPLAY ? "Quality of life while you play."
             : "Squeeze out more frames.";
         c.text(sub, cx, y + 27, DIM);
@@ -171,7 +159,6 @@ public final class Menu {
         shown = 0;
         switch (tab) {
             case HUD: hudTab(c); break;
-            case TRAINER: trainerTab(c); break;
             case GAMEPLAY: gameplayTab(c); break;
             default: performanceTab(c); break;
         }
@@ -185,7 +172,7 @@ public final class Menu {
         }
         if (!message.isEmpty()) {
             int mw = c.width(message) + 18;
-            card(c, (sw - mw) / 2, y + h + 4 > sh - 24 ? sh - 24 : y + h + 4, mw, 18, 0xF0070F26, 0x4A8CBEFF);
+            card(c, (sw - mw) / 2, y + h + 4 > sh - 24 ? sh - 24 : y + h + 4, mw, 18, 0xF0070F26, 0x7000D2FF);
             c.text(message, (sw - mw) / 2 + 9, (y + h + 4 > sh - 24 ? sh - 24 : y + h + 4) + 5, ACCENT);
         }
     }
@@ -401,34 +388,6 @@ public final class Menu {
         }
     }
 
-    // ---------------------------------------------------------------- Trainer
-
-    private void trainerTab(Canvas c) {
-        int s = rowSegment(c, "Fighting style", "Weapon and tactics of the bot", STYLE_NAMES, styleIdx);
-        if (s >= 0) styleIdx = s;
-        int d = rowStepper(c, "Difficulty", "Higher = faster aim, tighter spacing, better combos", Math.round(difficulty * 100) + "%");
-        if (d != 0) difficulty = Math.max(0.1f, Math.min(1f, Math.round((difficulty + 0.05f * d) * 20f) / 20f));
-        int a = rowSegment(c, "Arena", "Built around you, then you are teleported in", ArenaPlan.NAMES, arenaIdx);
-        if (a >= 0) arenaIdx = a;
-        if (rowToggle(c, "Give me a kit", "Armor, weapon, blocks and food", kit)) kit = !kit;
-        int b = rowButtons(c, "Bots", "The bot learns what works against you", new String[] {"Spawn bot", "Remove all"});
-        if (b == 0) {
-            host.requestBot(STYLES[styleIdx], difficulty, ArenaPlan.KINDS[arenaIdx], kit);
-            message = STYLE_NAMES[styleIdx] + " bot spawned";
-        } else if (b == 1) {
-            host.clearBots();
-            message = "Bots removed";
-        }
-        if (rowToggle(c, "Knockback trainer", "Practice taking and dealing knockback", state.knockbackTrainer)) {
-            state.knockbackTrainer = !state.knockbackTrainer;
-            message = "Knockback trainer " + (state.knockbackTrainer ? "on" : "off");
-        }
-        if (rowToggle(c, "Bedwars bridge trainer", "Shows your bridging speed", state.bedwarsBridgeTrainer)) {
-            state.bedwarsBridgeTrainer = !state.bedwarsBridgeTrainer;
-            message = "Bridge trainer " + (state.bedwarsBridgeTrainer ? "on" : "off");
-        }
-    }
-
     // ---------------------------------------------------------------- Gameplay
 
     private void gameplayTab(Canvas c) {
@@ -563,7 +522,7 @@ public final class Menu {
         if (guides[1] >= 0) c.fill(0, Math.round(guides[1] / u), sw, Math.round(guides[1] / u) + 1, 0x808FD3FF);
 
         // panel
-        card(c, px, py, pw, ph, 0xDC081634, 0x4A8CBEFF);
+        card(c, px, py, pw, ph, 0xDC081634, 0x7000D2FF);
         c.text("HUD editor", px + 12, py + 10, TEXT);
         c.text("HUD editor", px + 13, py + 10, TEXT);
         c.text("Drag to move, corner to resize", px + 12, py + 23, DIM);

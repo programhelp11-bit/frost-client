@@ -34,8 +34,6 @@ pub enum ToGame {
     Library { skins: Vec<LibEntry>, capes: Vec<LibEntry>, active_cape: String },
     /// PNG of the custom cape the player wears (None = built-in Frost cape / no cape).
     OwnCape { png_b64: Option<String> },
-    /// Trained tactics for the in-game bots (see `botlab`), in `botlab::SPECS` order.
-    BotPolicy { params: Vec<f32>, generation: u32 },
 }
 
 /// One slot of a radial menu.

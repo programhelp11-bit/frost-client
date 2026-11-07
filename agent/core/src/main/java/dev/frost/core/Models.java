@@ -4,8 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * JSON models shared with the Rust launcher (see src/ipc.rs, src/trainer.rs, src/hud_manager.rs).
- * Field names intentionally use snake_case so Gson maps them 1:1 to serde's output.
+ * Settings and HUD models (stored in config/frost-client.json).
  */
 public final class Models {
     private Models() {}
@@ -55,7 +54,18 @@ public final class Models {
         public List<Widget> widgets = new ArrayList<>();
         public float snap_grid = 4f;
 
-        /** Used until the launcher pushes the user's layout. */
+        /** Adds widgets a newer version knows about but the saved file does not. */
+        public HudLayout merged() {
+            HudLayout d = defaults();
+            for (Widget w : d.widgets) {
+                boolean have = false;
+                for (Widget x : widgets) if (x.kind.equals(w.kind)) have = true;
+                if (!have) widgets.add(w);
+            }
+            return this;
+        }
+
+        /** Used until the player changes the layout. */
         public static HudLayout defaults() {
             HudLayout l = new HudLayout();
             String[] kinds = {"cps", "fps", "ping", "keystrokes", "armor_status", "potion_status",
@@ -68,68 +78,6 @@ public final class Models {
             }
             return l;
         }
-    }
-
-    public static final class LibEntry {
-        public String id = "";
-        public String name = "";
-        public String color = "5A8CFF";
-    }
-
-    /** What the radial menus show; pushed by the launcher. */
-    public static final class Library {
-        public List<LibEntry> skins = new ArrayList<>();
-        public List<LibEntry> capes = new ArrayList<>();
-        public String active_cape = "frost";
-    }
-
-    public static final class CosmeticEntry {
-        public long skin_rev;
-        public boolean frost;
-        public String cape_url;
-        public String cape_hash;
-    }
-
-    public static final class BotConfig {
-        public int id;
-        public String name = "FrostBot";
-        /** sword | crystal | axe_shield | mace */
-        public String style = "sword";
-        public float difficulty = 0.5f;
-        public boolean legacy_combat;
-        /** none | flat | crystal | island */
-        public String arena = "none";
-        public boolean kit;
-    }
-
-    public static final class BotCommand {
-        public boolean forward, backward, left, right, jump, sprint;
-        public float d_yaw, d_pitch;
-        public boolean attack, use_item, place_crystal, hit_crystal;
-    }
-
-    public static final class Vec3 {
-        public double x, y, z;
-
-        public Vec3() {}
-
-        public Vec3(double x, double y, double z) {
-            this.x = x;
-            this.y = y;
-            this.z = z;
-        }
-    }
-
-    public static final class Obs {
-        public Vec3 bot_pos = new Vec3();
-        public float bot_yaw, bot_pitch, bot_health = 20f;
-        public boolean on_ground;
-        public Vec3 target_pos = new Vec3();
-        public Vec3 target_vel = new Vec3();
-        public boolean target_blocking;
-        public float target_health = 20f;
-        public Float crystal_to_target;
-        public float dt = 0.05f;
     }
 
     public static final class Keys {
@@ -160,12 +108,5 @@ public final class Models {
         // Bedwars
         public int bw_iron, bw_gold, bw_diamond, bw_emerald, bw_blocks;
         public float bridge_bps, bridge_best;
-    }
-
-    public static final class KbProfile {
-        public double strength = 0.4;
-        public double friction = 2.0;
-        public double vertical_cap = 0.4;
-        public boolean legacy = false;
     }
 }
