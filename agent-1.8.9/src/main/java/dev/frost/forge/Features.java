@@ -134,15 +134,31 @@ public final class Features {
         try {
             Framebuffer fb = mc.getFramebuffer();
             int w = mc.displayWidth, h = mc.displayHeight;
-            BufferedImage full = net.minecraft.util.ScreenShotHelper.createScreenshot(w, h, fb);
-            if (full == null) return;
+            org.lwjgl.opengl.GL11.glPixelStorei(org.lwjgl.opengl.GL11.GL_PACK_ALIGNMENT, 1);
+            org.lwjgl.opengl.GL11.glPixelStorei(org.lwjgl.opengl.GL11.GL_UNPACK_ALIGNMENT, 1);
+            if (net.minecraft.client.renderer.OpenGlHelper.isFramebufferEnabled()) {
+                w = fb.framebufferTextureWidth;
+                h = fb.framebufferTextureHeight;
+            }
+            java.nio.IntBuffer buf = org.lwjgl.BufferUtils.createIntBuffer(w * h);
+            if (net.minecraft.client.renderer.OpenGlHelper.isFramebufferEnabled()) {
+                net.minecraft.client.renderer.GlStateManager.bindTexture(fb.framebufferTexture);
+                org.lwjgl.opengl.GL11.glGetTexImage(org.lwjgl.opengl.GL11.GL_TEXTURE_2D, 0,
+                    org.lwjgl.opengl.GL12.GL_BGRA, org.lwjgl.opengl.GL12.GL_UNSIGNED_INT_8_8_8_8_REV, buf);
+            } else {
+                org.lwjgl.opengl.GL11.glReadPixels(0, 0, w, h,
+                    org.lwjgl.opengl.GL12.GL_BGRA, org.lwjgl.opengl.GL12.GL_UNSIGNED_INT_8_8_8_8_REV, buf);
+            }
+            int[] px = new int[w * h];
+            buf.get(px);
+            int vw = Math.min(w, mc.displayWidth), vh = Math.min(h, mc.displayHeight);
             int pct = Math.max(10, Math.min(100, st.fx.clip_scale));
-            int ow = Math.max(16, full.getWidth() * pct / 100) & ~1;
-            int oh = Math.max(16, full.getHeight() * pct / 100) & ~1;
+            int ow = Math.max(16, vw * pct / 100) & ~1;
+            int oh = Math.max(16, vh * pct / 100) & ~1;
             BufferedImage out = new BufferedImage(ow, oh, BufferedImage.TYPE_INT_RGB);
             for (int y = 0; y < oh; y++) {
-                int sy = Math.min(full.getHeight() - 1, y * full.getHeight() / oh);
-                for (int x = 0; x < ow; x++) out.setRGB(x, y, full.getRGB(Math.min(full.getWidth() - 1, x * full.getWidth() / ow), sy));
+                int sy = h - 1 - Math.min(vh - 1, y * vh / oh);   // GL rows start at the bottom
+                for (int x = 0; x < ow; x++) out.setRGB(x, y, px[sy * w + Math.min(vw - 1, x * vw / ow)] & 0xFFFFFF);
             }
             Models.Features f = new Models.Features();
             f.clip_fps = st.fx.clip_fps;

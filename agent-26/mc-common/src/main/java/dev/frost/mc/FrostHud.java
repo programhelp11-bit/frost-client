@@ -87,7 +87,7 @@ public final class FrostHud {
         Minecraft mc = Minecraft.getInstance();
         Models.Features f = FrostState.INSTANCE.fx;
         if (f.crosshair.equals("vanilla") || mc.options.hideGui) {
-            vanilla.render(g, dt);
+            vanilla.extractRenderState(g, dt);
             return;
         }
         Widgets.crosshair(Canv.of(g), f, mc.getWindow().getGuiScaledWidth() / 2, mc.getWindow().getGuiScaledHeight() / 2);

@@ -12,6 +12,7 @@ def convert(s):
     s = re.sub(r'\bGuiGraphics\b', 'GuiGraphicsExtractor', s)
     s = re.sub(r'\b(g|gg)\.drawString\((.*)\);', lambda m: f'{m.group(1)}.text({m.group(2)}, false);', s)
     s = s.replace('g.renderItem(', 'g.item(')
+    s = s.replace('vanilla.render(g, dt)', 'vanilla.extractRenderState(g, dt)')
     s = s.replace('mc.options.hideGui || ', '')
     s = s.replace('mc.screen == null', 'mc.mouseHandler.isMouseGrabbed()')
     s = s.replace('mc.screen != null', '!mc.mouseHandler.isMouseGrabbed()')
