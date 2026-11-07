@@ -24,9 +24,12 @@ public final class Menu {
     /** Called whenever a setting changes (the game saves the config). */
     public interface Host {
         void settingsChanged();
+
+        /** The game folder (clips are saved in a subfolder). */
+        java.io.File gameDir();
     }
 
-    public enum Tab { HUD, GAMEPLAY, PERFORMANCE }
+    public enum Tab { HUD, GAMEPLAY, PERFORMANCE, TOOLS }
 
     // launcher palette
     static final int TEXT = 0xFFEAF2FF;
@@ -95,6 +98,7 @@ public final class Menu {
         clicked = down && !wasDown;
         wasDown = down;
 
+        state.editorOpen = editing;
         if (editing) {
             renderEditor(c, sw, sh, down);
             return;
@@ -120,8 +124,8 @@ public final class Menu {
         c.text("F R O S T", x + 28, y + 12, TEXT);
 
         // navigation
-        String[] names = {"HUD", "Gameplay", "Performance"};
-        Tab[] tabs = {Tab.HUD, Tab.GAMEPLAY, Tab.PERFORMANCE};
+        String[] names = {"HUD", "Gameplay", "Performance", "Tools"};
+        Tab[] tabs = {Tab.HUD, Tab.GAMEPLAY, Tab.PERFORMANCE, Tab.TOOLS};
         for (int i = 0; i < tabs.length; i++) {
             int ny = y + 40 + i * 26;
             boolean on = tab == tabs[i];
@@ -145,11 +149,12 @@ public final class Menu {
         // content
         cx = x + sb + 16;
         cw = w - sb - 32;
-        String title = tab == Tab.HUD ? "HUD" : tab == Tab.GAMEPLAY ? "Gameplay" : "Performance";
+        String title = tab == Tab.HUD ? "HUD" : tab == Tab.GAMEPLAY ? "Gameplay" : tab == Tab.TOOLS ? "Tools" : "Performance";
         c.text(title, cx, y + 14, TEXT);
         c.text(title, cx + 1, y + 14, TEXT);
         String sub = tab == Tab.HUD ? "Choose what is shown on screen."
-            : tab == Tab.GAMEPLAY ? "Quality of life while you play."
+            : tab == Tab.GAMEPLAY ? "Crosshair and quality of life while you play."
+            : tab == Tab.TOOLS ? "Sound radar, waypoints, Spotify and clips."
             : "Squeeze out more frames.";
         c.text(sub, cx, y + 27, DIM);
 
@@ -160,6 +165,7 @@ public final class Menu {
         switch (tab) {
             case HUD: hudTab(c); break;
             case GAMEPLAY: gameplayTab(c); break;
+            case TOOLS: toolsTab(c); break;
             default: performanceTab(c); break;
         }
         total = rowIdx;
@@ -397,11 +403,33 @@ public final class Menu {
         if (rowToggle(c, "Item physics", "Dropped items lie flat", q.item_physics)) { q.item_physics = !q.item_physics; changed(); }
         if (rowToggle(c, "Dynamic FOV", "Sprint and speed change the field of view", q.dynamic_fov)) { q.dynamic_fov = !q.dynamic_fov; changed(); }
         if (rowToggle(c, "Zoom", "Hold the zoom key", q.zoom_enabled)) { q.zoom_enabled = !q.zoom_enabled; changed(); }
-        int d = rowStepper(c, "Zoom FOV", "Field of view while zooming", Math.round(q.zoom_fov) + " deg");
-        if (d != 0) { q.zoom_fov = Math.max(10f, Math.min(60f, q.zoom_fov + 5f * d)); changed(); }
+        int zd = rowStepper(c, "Zoom FOV", "Field of view while zooming", Math.round(q.zoom_fov) + " deg");
+        if (zd != 0) { q.zoom_fov = Math.max(10f, Math.min(60f, q.zoom_fov + 5f * zd)); changed(); }
         if (rowToggle(c, "Hitboxes", "Show entity hitboxes", q.hitboxes)) { q.hitboxes = !q.hitboxes; changed(); }
         if (rowToggle(c, "Coordinates", "XYZ on the HUD", q.show_coordinates)) { q.show_coordinates = !q.show_coordinates; changed(); }
         if (rowToggle(c, "Biome", "Biome name on the HUD", q.show_biome)) { q.show_biome = !q.show_biome; changed(); }
+        Models.Features f = state.fx;
+        int ci = indexOf(CROSS_IDS, f.crosshair);
+        int sel = rowSegment(c, "Crosshair", "Your own crosshair instead of the vanilla one", CROSS_NAMES, ci);
+        if (sel >= 0) { f.crosshair = CROSS_IDS[sel]; changed(); }
+        int ki = indexOf(COLOR_HEX, f.crosshair_color.toUpperCase(Locale.ROOT));
+        sel = rowSegment(c, "Crosshair colour", "Ice, white, red, green, yellow or pink", COLOR_NAMES, ki);
+        if (sel >= 0) { f.crosshair_color = COLOR_HEX[sel]; changed(); }
+        int d = rowStepper(c, "Crosshair size", "Length of the lines", String.valueOf(f.crosshair_size));
+        if (d != 0) { f.crosshair_size = Math.max(1, Math.min(14, f.crosshair_size + d)); changed(); }
+        d = rowStepper(c, "Crosshair gap", "Space in the middle", String.valueOf(f.crosshair_gap));
+        if (d != 0) { f.crosshair_gap = Math.max(0, Math.min(8, f.crosshair_gap + d)); changed(); }
+        if (rowToggle(c, "Low fire", "Hide the big fire overlay so you can see while burning", f.low_fire)) { f.low_fire = !f.low_fire; changed(); }
+    }
+
+    private static final String[] CROSS_IDS = {"vanilla", "cross", "dot", "circle", "plus_dot"};
+    private static final String[] CROSS_NAMES = {"Vanilla", "Cross", "Dot", "Circle", "Plus dot"};
+    private static final String[] COLOR_HEX = {"00D2FF", "FFFFFF", "FF5555", "55FF55", "FFFF55", "FF55FF"};
+    private static final String[] COLOR_NAMES = {"Ice", "White", "Red", "Green", "Yellow", "Pink"};
+
+    private static int indexOf(String[] a, String v) {
+        for (int i = 0; i < a.length; i++) if (a[i].equals(v)) return i;
+        return 0;
     }
 
     // ---------------------------------------------------------------- Performance
@@ -420,6 +448,71 @@ public final class Menu {
         d = rowStepper(c, "Simulation distance", "Used when the cap is on", String.valueOf(q.sim_distance_cap));
         if (d != 0) { q.sim_distance_cap = Math.max(4, Math.min(16, q.sim_distance_cap + d)); changed(); }
         if (rowToggle(c, "No menu blur", "Remove the blurred menu background", q.no_menu_blur)) { q.no_menu_blur = !q.no_menu_blur; changed(); }
+        d = rowStepper(c, "Particle limit", "How many particles are shown (TNT spam, fire, hits)", state.fx.particle_limit + "%");
+        if (d != 0) { state.fx.particle_limit = Math.max(0, Math.min(100, state.fx.particle_limit + 10 * d)); changed(); }
+    }
+
+    // ---------------------------------------------------------------- Tools
+
+    private void toolsTab(Canvas c) {
+        Models.Features f = state.fx;
+        if (rowToggle(c, "Sound radar", "Shows nearby sounds on a radar (footsteps, chests, potions, TNT)", f.sound_radar)) { f.sound_radar = !f.sound_radar; changed(); }
+        int d = rowStepper(c, "Radar range", "Blocks", String.valueOf(f.radar_range));
+        if (d != 0) { f.radar_range = Math.max(8, Math.min(64, f.radar_range + 4 * d)); changed(); }
+        if (rowToggle(c, "TNT fuse timer", "Seconds left above every primed TNT", f.tnt_timer)) { f.tnt_timer = !f.tnt_timer; changed(); }
+        if (rowToggle(c, "AR waypoints", "Floating markers with distance and height", f.ar_waypoints)) { f.ar_waypoints = !f.ar_waypoints; changed(); }
+        int b = rowButtons(c, "Waypoints", state.waypoints.size() + " saved", new String[] {"Add here", "Clear all"});
+        if (b == 0) {
+            Models.Waypoint w = new Models.Waypoint("WP " + (state.waypoints.size() + 1), Math.floor(state.view.x), Math.floor(state.view.y), Math.floor(state.view.z), "00D2FF");
+            state.waypoints.add(w);
+            message = "Waypoint added";
+            changed();
+        } else if (b == 1) {
+            state.waypoints.clear();
+            message = "Waypoints cleared";
+            changed();
+        }
+        for (int i = 0; i < Math.min(6, state.waypoints.size()); i++) {
+            Models.Waypoint w = state.waypoints.get(i);
+            String where = Math.round(w.x) + " " + Math.round(w.y) + " " + Math.round(w.z);
+            if (rowButtons(c, w.name, where, new String[] {"Remove"}) == 0) {
+                state.waypoints.remove(w);
+                changed();
+            }
+        }
+        if (rowToggle(c, "Spotify", "Now playing on the HUD and hotkeys F7 / F8 / F9", f.spotify_enabled)) { f.spotify_enabled = !f.spotify_enabled; changed(); }
+        boolean linked = !f.spotify_refresh.isEmpty();
+        int sb = rowButtons(c, "Spotify account", linked ? "Connected: cover art and progress" : (f.spotify_client_id.isEmpty()
+            ? "Optional: put your Spotify app id in frost-client.json" : "Log in with your browser"),
+            new String[] {linked ? "Reconnect" : "Connect"});
+        if (sb == 0) {
+            try {
+                String url = Spotify.beginLogin(state, new Runnable() { public void run() { changed(); } });
+                message = url == null ? "Set spotify_client_id in frost-client.json first" : "Finish the login in your browser";
+            } catch (Exception e) {
+                message = "Could not start the login";
+            }
+        }
+        int ctl = rowButtons(c, "Playback", Spotify.track.title.isEmpty() ? "Nothing playing" : Spotify.track.title, new String[] {"Prev", "Play / Pause", "Next"});
+        if (ctl == 0) Spotify.previous(state);
+        else if (ctl == 1) Spotify.playPause(state);
+        else if (ctl == 2) Spotify.next(state);
+        d = rowStepper(c, "Clip length", "Seconds saved when you press F6 or Alt+C", f.clip_seconds + " s");
+        if (d != 0) { f.clip_seconds = Math.max(10, Math.min(120, f.clip_seconds + 10 * d)); changed(); }
+        int fi = rowSegment(c, "Clip FPS", "Higher is smoother but heavier", new String[] {"10", "15", "20", "30"}, f.clip_fps >= 30 ? 3 : f.clip_fps >= 20 ? 2 : f.clip_fps >= 15 ? 1 : 0);
+        if (fi >= 0) { f.clip_fps = new int[] {10, 15, 20, 30}[fi]; changed(); }
+        d = rowStepper(c, "Clip quality", "JPEG quality", f.clip_quality + "%");
+        if (d != 0) { f.clip_quality = Math.max(30, Math.min(95, f.clip_quality + 5 * d)); changed(); }
+        d = rowStepper(c, "Clip size", "Resolution relative to the game window", f.clip_scale + "%");
+        if (d != 0) { f.clip_scale = Math.max(30, Math.min(100, f.clip_scale + 10 * d)); changed(); }
+        if (rowButtons(c, "Clip maker", state.clip.bufferedSeconds() + " s buffered", new String[] {"Save clip now"}) == 0) {
+            try {
+                java.io.File out = state.clip.save(new java.io.File(host.gameDir(), "frost-clips"));
+                message = out == null ? "Nothing recorded yet" : "Clip saved: " + out.getName();
+            } catch (java.io.IOException e) {
+                message = "Could not save the clip";
+            }
+        }
     }
 
     // ---------------------------------------------------------------- HUD editor

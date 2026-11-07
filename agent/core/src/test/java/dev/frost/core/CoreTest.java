@@ -46,6 +46,7 @@ class CoreTest {
         final int[] changed = {0};
         FrostState st = new FrostState();
         Menu menu = new Menu(new Menu.Host() {
+            public java.io.File gameDir() { return new java.io.File("build/tmp"); }
             public void settingsChanged() { changed[0]++; }
         }, st);
         Menu.Canvas canvas = new Menu.Canvas() {

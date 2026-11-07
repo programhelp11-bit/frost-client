@@ -26,6 +26,10 @@ public class FrostForge {
         public void settingsChanged() {
             Config.save(configFile, FrostState.INSTANCE);
         }
+
+        public File gameDir() {
+            return Minecraft.getMinecraft().mcDataDir;
+        }
     };
 
     @Mod.EventHandler
@@ -38,6 +42,7 @@ public class FrostForge {
     @SubscribeEvent
     public void onRenderTick(TickEvent.RenderTickEvent e) {
         if (e.phase == TickEvent.Phase.START) Stats.frame(Minecraft.getMinecraft());
+        else Features.capture(Minecraft.getMinecraft());
     }
 
     @SubscribeEvent
@@ -51,11 +56,26 @@ public class FrostForge {
         Stats.tick(mc);
         Qol.tick(mc);
         Capes.tick(mc, ticks);
+        Features.tick(mc);
     }
 
     @SubscribeEvent
     public void onOverlay(RenderGameOverlayEvent.Post e) {
-        if (e.type == RenderGameOverlayEvent.ElementType.ALL) Hud.render(Minecraft.getMinecraft());
+        if (e.type == RenderGameOverlayEvent.ElementType.ALL) {
+            Features.updateView(Minecraft.getMinecraft(), e.partialTicks);
+            Hud.render(Minecraft.getMinecraft());
+        }
+    }
+
+    @SubscribeEvent
+    public void onOverlayPre(RenderGameOverlayEvent.Pre e) {
+        if (e.type == RenderGameOverlayEvent.ElementType.CROSSHAIRS && Hud.crosshair(Minecraft.getMinecraft())) e.setCanceled(true);
+    }
+
+    @SubscribeEvent
+    public void onBlockOverlay(net.minecraftforge.client.event.RenderBlockOverlayEvent e) {
+        if (FrostState.INSTANCE.fx.low_fire
+            && e.overlayType == net.minecraftforge.client.event.RenderBlockOverlayEvent.OverlayType.FIRE) e.setCanceled(true);
     }
 
     @SubscribeEvent

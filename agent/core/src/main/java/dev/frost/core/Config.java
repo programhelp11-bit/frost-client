@@ -21,6 +21,8 @@ public final class Config {
     static final class Data {
         Models.Qol qol;
         Models.HudLayout hud;
+        Models.Features fx;
+        java.util.List<Models.Waypoint> waypoints;
     }
 
     public static void load(File file, FrostState st) {
@@ -30,6 +32,11 @@ public final class Config {
             if (d == null) return;
             if (d.qol != null) st.qol = d.qol;
             if (d.hud != null && d.hud.widgets != null) st.hud = d.hud.merged();
+            if (d.fx != null) st.fx = d.fx;
+            if (d.waypoints != null) {
+                st.waypoints.clear();
+                st.waypoints.addAll(d.waypoints);
+            }
         } catch (Exception ignored) {
             // a broken file simply means defaults
         }
@@ -43,6 +50,8 @@ public final class Config {
             Data d = new Data();
             d.qol = st.qol;
             d.hud = st.hud;
+            d.fx = st.fx;
+            d.waypoints = new java.util.ArrayList<Models.Waypoint>(st.waypoints);
             try (Writer w = new FileWriter(file)) {
                 GSON.toJson(d, w);
             }

@@ -50,6 +50,10 @@ public class FrostScreen extends Screen {
         g.pose().popMatrix();
     }
 
+    public void removed() {
+        FrostState.INSTANCE.editorOpen = false;
+    }
+
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
         render(g, mouseX, mouseY, delta);
     }

@@ -69,8 +69,10 @@ public final class Models {
         public static HudLayout defaults() {
             HudLayout l = new HudLayout();
             String[] kinds = {"cps", "fps", "ping", "keystrokes", "armor_status", "potion_status",
-                "direction", "reach_display", "coordinates", "bw_resources", "bw_blocks", "bridge_speed"};
-            boolean[] on = {true, true, true, true, false, false, false, false, false, false, false, false};
+                "direction", "reach_display", "coordinates", "bw_resources", "bw_blocks", "bridge_speed",
+                "bw_timers", "bw_events", "bw_beds", "sound_radar", "waypoints", "spotify", "clip_status"};
+            boolean[] on = {true, true, true, true, false, false, false, false, false, false, false, false,
+                true, true, true, false, false, false, true};
             float y = 6f;
             for (int i = 0; i < kinds.length; i++) {
                 l.widgets.add(new Widget(kinds[i], on[i], 6f, y));
@@ -108,5 +110,56 @@ public final class Models {
         // Bedwars
         public int bw_iron, bw_gold, bw_diamond, bw_emerald, bw_blocks;
         public float bridge_bps, bridge_best;
+    }
+
+    public static final class Waypoint {
+        public String name = "";
+        public double x, y, z;
+        public String color = "00D2FF";
+
+        public Waypoint() {}
+
+        public Waypoint(String name, double x, double y, double z, String color) {
+            this.name = name;
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.color = color;
+        }
+    }
+
+    /** Feature settings of the PvP / BedWars / tool modules. */
+    public static final class Features {
+        // crosshair
+        public String crosshair = "vanilla";          // vanilla | cross | dot | circle | plus_dot
+        public String crosshair_color = "00D2FF";
+        public int crosshair_size = 5;
+        public int crosshair_gap = 2;
+        public boolean low_fire = true;
+        // performance
+        public int particle_limit = 100;              // percent of vanilla particles
+        // tactical
+        public boolean sound_radar = true;
+        public int radar_range = 24;
+        public boolean ar_waypoints = true;
+        public boolean tnt_timer = true;
+        // clip maker
+        public int clip_seconds = 30;
+        public int clip_fps = 15;
+        public int clip_quality = 70;                 // JPEG quality, percent
+        public int clip_scale = 50;                   // output size, percent of the window
+        // spotify
+        public boolean spotify_enabled = true;
+        public String spotify_client_id = "";
+        public String spotify_refresh = "";
+    }
+
+    /** Camera of the local player in the current frame (set by the game hooks, read by the overlays). */
+    public static final class View {
+        public volatile double x, y, z;
+        public volatile float yaw, pitch;
+        public volatile int fov = 70;
+        public volatile int w = 427, h = 240;
+        public volatile boolean valid;
     }
 }

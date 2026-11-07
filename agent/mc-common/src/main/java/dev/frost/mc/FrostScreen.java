@@ -50,6 +50,10 @@ public class FrostScreen extends Screen {
         g.pose().popMatrix();
     }
 
+    public void removed() {
+        FrostState.INSTANCE.editorOpen = false;
+    }
+
     public boolean isPauseScreen() {
         return false;
     }

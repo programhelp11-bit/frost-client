@@ -16,6 +16,10 @@ public final class FrostMc {
         public void settingsChanged() {
             Config.save(configFile, FrostState.INSTANCE);
         }
+
+        public java.io.File gameDir() {
+            return FabricLoader.getInstance().getGameDir().toFile();
+        }
     };
 
     private FrostMc() {}
@@ -30,6 +34,7 @@ public final class FrostMc {
         openMenuKey(mc);
         StatsCollector.tick(mc);
         QolApplier.tick(mc);
+        Features.tick(mc);
     }
 
     /** Right Shift opens the Frost menu (polled, so no key-mapping API is needed). */

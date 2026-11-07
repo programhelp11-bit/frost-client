@@ -12,5 +12,7 @@ public class Entry implements ClientModInitializer {
         FrostMc.init("1.21.10");
         HudElementRegistry.attachElementBefore(
             VanillaHudElements.CHAT, ResourceLocation.fromNamespaceAndPath("frost_client", "hud"), FrostHud::render);
+        HudElementRegistry.replaceElement(
+            VanillaHudElements.CROSSHAIR, orig -> (g, dt) -> FrostHud.crosshair(g, dt, orig));
     }
 }

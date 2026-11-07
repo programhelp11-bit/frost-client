@@ -44,6 +44,11 @@ public class FrostScreen extends GuiScreen {
     }
 
     @Override
+    public void onGuiClosed() {
+        FrostState.INSTANCE.editorOpen = false;
+    }
+
+    @Override
     public boolean doesGuiPauseGame() {
         return false;
     }
