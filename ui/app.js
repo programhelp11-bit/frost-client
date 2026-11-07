@@ -109,11 +109,11 @@ function render() {
     browse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg>',
     cosmetics: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="m12 3 2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.4 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/></svg>',
     skinedit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 20l4-1L19 8l-3-3L5 16z"/><path d="M14 7l3 3"/></svg>',
-    rust: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>',
-  perf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M13 3 5 13h6l-1 8 8-10h-6z"/></svg>',
+    perf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M13 3 5 13h6l-1 8 8-10h-6z"/></svg>',
+    botai: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01M9 16h6"/></svg>',
     capeedit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M8 4h8l3 4-2 12H7L5 8z"/><path d="M9 4c0 2 6 2 6 0"/></svg>',
   };
-  const nav = [['home', 'Home'], ['versions', 'Versions'], ['browse', 'Browse'], ['cosmetics', 'Cape'], ['skinedit', 'Skin editor'], ['capeedit', 'Cape editor'], ['perf', 'Performance'], ['rust', 'Rust']];
+  const nav = [['home', 'Home'], ['versions', 'Versions'], ['browse', 'Browse'], ['cosmetics', 'Cape'], ['skinedit', 'Skin editor'], ['capeedit', 'Cape editor'], ['perf', 'Performance'], ['botai', 'Bot AI']];
   $('#app').innerHTML = `
     <div class="shell">
       <aside class="rail">
@@ -139,7 +139,7 @@ function render() {
 function renderView() {
   const v = $('#view');
   if (!v) return;
-  const pages = { home: pageHome, versions: pageVersions, browse: pageBrowse, cosmetics: pageCosmetics, skinedit: pageSkinEditor, capeedit: pageCapeEditor, perf: pagePerf, rust: pageRust, settings: pageSettings };
+  const pages = { home: pageHome, versions: pageVersions, browse: pageBrowse, cosmetics: pageCosmetics, skinedit: pageSkinEditor, capeedit: pageCapeEditor, perf: pagePerf, botai: pageBotAI, settings: pageSettings };
   v.innerHTML = pages[S.page]();
   if (typeof studioMount === 'function') studioMount();
   if (S.page === 'browse') browseLoadIfNeeded();
@@ -301,27 +301,47 @@ async function mrSearch() {
 }
 
 
-/* ------------------------------------------------------------------ rust (Horizon) */
-function pageRust() {
-  const R = S.rust || null;
-  if (!R) rustLoad();
-  const busy = S.rustBusy;
-  const pill = (on, t) => `<span class="pill ${on ? 'ok' : ''}"><i></i>${t}</span>`;
-  return `<h1 class="page-title">Rust</h1>
-    <div class="page-sub">Minecraft: Java Edition 26.3 rebuilt in Rust (Horizon, MIT, open source). Frost takes the game's source from GitHub, builds it and starts the game itself.</div>
-    ${setGroup('TOOLS',
-      setRow('Git', 'Downloads the game from GitHub.', pill(R && R.git, R && R.git ? 'Found' : 'Missing')),
-      setRow('Rust (cargo)', 'Builds the game. Rust 1.90 or newer, from rustup.rs.', pill(R && R.cargo, R && R.cargo ? 'Found' : 'Missing')),
-      setRow('Java (JDK 25)', 'Used once, to prepare the game data.', pill(R && R.java, R && R.java ? 'Found' : 'Missing')))}
-    ${setGroup('HORIZON',
-      setRow('Game source', 'github.com/horizon-rust/horizon. Press again to update.', busy === 'setup' ? '<span class="spin"></span>' : `${pill(R && R.cloned, R && R.cloned ? 'Downloaded' : 'Not yet')}<button class="btn ${R && R.cloned ? 'ghost' : ''} sm" data-act="rust-setup">${R && R.cloned ? 'Update' : 'Download'}</button>`),
-      setRow('Play', 'Builds and opens the game. The first start also fetches Mojang\'s 26.3 data and takes several minutes.', `<button class="btn sm" data-act="rust-run">Play Horizon</button>`))}
-    <p class="muted-note">Horizon has no Minecraft files of its own: you need Minecraft Java Edition, and 26.3 played once in the official launcher. It is an early project, and Frost's capes, HUD and bots only exist in the Java mods.</p>`;
+/* ------------------------------------------------------------------ bot AI (self-play trainer) */
+const BOT_LABELS = {
+  ideal_distance: ['Fighting distance', 'How close the bot likes to stand (blocks)'],
+  strafe_period: ['Strafe rhythm', 'Seconds between side-step changes'],
+  strafe_flip: ['Strafe changes', 'How often it swaps sides'],
+  counter_strafe: ['Counter-strafing', 'Moves the opposite way of the player'],
+  aim_lead: ['Aim lead', 'How far ahead of a moving player it aims'],
+  wtap_time: ['W-tap', 'Sprint reset after a hit (s)'],
+  retreat_hp: ['Retreat health', 'Hearts left before it backs off'],
+  retreat_prob: ['Retreat chance', 'How readily it retreats when hurt'],
+  crit_range: ['Crit jump range', 'Distance where it jumps for crits'],
+  attack_early: ['Swing timing', 'How much it hurries its swings'],
+  kite_cooldown: ['Kiting', 'Backs off while its sword recharges'],
+  knock_jump: ['Knockback recovery', 'Jumps after being knocked back']
+};
+function pageBotAI() {
+  const B = S.botlab;
+  if (!B) botLoad();
+  const pct = v => Math.round((v || 0) * 100) + '%';
+  const hist = (B && B.history) || [];
+  const bars = hist.slice(-60).map(v => `<i style="height:${Math.max(4, Math.round(v * 100))}%"></i>`).join('');
+  const rows = ((B && B.params) || []).map(p => {
+    const [t, d] = BOT_LABELS[p.name] || [p.name, ''];
+    const at = Math.round((p.value - p.min) / (p.max - p.min) * 100);
+    const was = Math.round((p.default - p.min) / (p.max - p.min) * 100);
+    return setRow(t, d, `<div class="pbar"><i style="width:${at}%"></i><b style="left:${was}%"></b></div><span class="pv">${(+p.value).toFixed(2)}</span>`);
+  }).join('');
+  return `<h1 class="page-title">Bot AI</h1>
+    <div class="page-sub">The Rust trainer simulates thousands of PvP duels in the background, keeps what wins and sends the new tactics to your bots in the game. It never stops getting better while Frost is open.</div>
+    ${setGroup('TRAINER',
+      setRow('Training', 'Self-play against four fighting styles and its own past champions.', `<span class="pill ${B && B.running ? 'ok' : ''}"><i></i>${B && B.running ? 'Learning' : 'Paused'}</span><button class="btn ghost sm" data-act="bot-toggle">${B && B.running ? 'Pause' : 'Resume'}</button>`),
+      setRow('Generation', 'Rounds of evolution so far.', `<span class="pv">${B ? B.generation : '-'}</span>`),
+      setRow('Win rate', 'Trained bot against the scripted fighters. The grey value is the untrained bot.', `<span class="pv">${B ? pct(B.win_rate) : '-'}</span><span class="pv dim">${B ? pct(B.baseline_rate) : ''}</span>`),
+      setRow('In game', 'The trained tactics are sent whenever the game is connected.', `<span class="pill ${B && B.connected ? 'ok' : ''}"><i></i>${B && B.connected ? 'Connected' : 'Game not running'}</span>`))}
+    <div class="glass botchart"><div class="bars">${bars || '<span class="dim">Collecting data...</span>'}</div><small>Win rate over time</small></div>
+    ${setGroup('WHAT IT LEARNED', rows)}
+    <div class="line" style="margin-top:10px"><button class="btn ghost sm" data-act="bot-reset">Start learning from scratch</button></div>`;
 }
-async function rustLoad() {
-  S.rust = { loading: true };
-  try { S.rust = await inv('rust_status'); } catch (e) { S.rust = {}; }
-  if (S.page === 'rust') renderView();
+async function botLoad() {
+  try { S.botlab = await inv('botlab_status'); } catch (e) { S.botlab = { history: [], params: [] }; }
+  if (S.page === 'botai') renderView();
 }
 
 /* ------------------------------------------------------------------ performance */
@@ -335,15 +355,20 @@ function pagePerf() {
         : `<span class="pill ${on ? 'ok' : ''}"><i></i>${on ? 'Installed' : 'Off'}</span><button class="btn ${on ? 'ghost' : ''} sm" data-act="perf-group" data-g="${key}" data-on="${on ? 0 : 1}">${on ? 'Remove' : 'Install'}</button>`));
   };
   const vers = S.st.instances.map(i => `<button class="${v === i.id ? 'on' : ''}" data-act="perf-ver" data-v="${i.id}">${esc(i.id)}</button>`).join('');
+  const PK = S.pack || null;
+  if (!PK) packLoad();
+  const packRow = r => `<span class="pill ${r.fabric ? (r.have === r.total ? 'ok' : '') : 'ok'}"><i></i>${esc(r.version)} ${r.fabric ? r.have + '/' + r.total : 'agent'}</span>`;
+  const packCard = `${setGroup('FROST MODPACK',
+      setRow('Base pack', 'The Frost agent (HUD, capes, bots, in-game FPS boost) plus Sodium, ImmediatelyFast, Entity Culling, Lithium, FerriteCore and ModernFix. Set up automatically the first time you start a version.', S.perfBusy === 'pack' ? '<span class="spin"></span>' : `<button class="btn sm" data-act="pack-install" data-all="1">Install on all versions</button><button class="btn ghost sm" data-act="pack-install" data-all="0">This version</button>`),
+      setRow('Status', 'Mods in place per version. Minecraft 1.8.9 (Forge) has no Fabric mods: the agent brings its own optimizations.', `<span class="pills">${PK ? PK.map(packRow).join('') : ''}</span>`),
+      setRow('Auto setup', 'Install the pack on the first launch of each version. Removed mods stay removed.', tog('auto_pack', c.auto_pack !== false)))}`;
   return `<h1 class="page-title">Performance</h1>
     <div class="page-sub">More frames without touching your settings by hand. Pick a version, then switch things on.</div>
+    ${packCard}
     <div class="line" style="margin-bottom:6px"><div class="seg">${vers}</div></div>
     ${setGroup('BUILT-IN',
-      setRow('Auto FPS boost', 'Before each launch: fast graphics, no clouds or shadows, no vsync, render distance 8. Works on every version.', tog('auto_optimize', c.auto_optimize !== false)),
-      setRow('Vulkan renderer', 'Minecraft 26.2 only. Asks the game for its experimental Vulkan backend, and falls back to OpenGL on GPUs without Vulkan.', tog('perf_vulkan', !!c.perf_vulkan)),
       setRow('Launch boost', 'High CPU priority for the game and the stronger GPU on laptops with two graphics chips.', tog('launch_boost', c.launch_boost !== false)))}
     ${setGroup('WHAT THE BOOST CHANGES',
-      setRow('Video options', 'Fast graphics, no smooth lighting, clouds, shadows or biome blend; particles minimal; mipmaps off; vsync off; no screen/FOV/darkness/glint effects; no chunk fade-in; render distance 8, simulation 6; idle FPS limit.', ''),
       setRow('Java memory', 'Tuned G1 collector (short pauses, early cycles) and a heap that fits your RAM setting under Settings. 2-4 GB is the sweet spot; more only makes pauses longer.', ''),
       setRow('Do it yourself', 'Plug in the laptop and use the High performance power plan, close browsers and overlays, play at a lower resolution if frames are still low, and keep the game on the discrete GPU.', ''))}
     ${setGroup('FAST MODS' + (fabric ? '' : ' (FABRIC VERSIONS)'),
@@ -352,6 +377,10 @@ function pagePerf() {
     ${fabric ? '' : '<p class="muted-note">1.8.9 has no Fabric mods; it gets the built-in boost and the in-game Performance tab (Right Shift).</p>'}`;
 }
 
+async function packLoad() {
+  try { S.pack = await inv('pack_status'); } catch (e) { S.pack = []; }
+  if (S.page === 'perf') renderView();
+}
 async function perfLoad(v) {
   S.perf = S.perf || {};
   S.perf[v] = { renderer: false, logic: false, loading: true };
@@ -443,13 +472,16 @@ const ACTIONS = {
   },
   'goto-settings-mc': () => { S.page = 'settings'; S.settingsTab = 'java'; render(); },
   'goto-browse': () => { S.page = 'browse'; S.mr.mc = S.sel; S.mr.page = null; render(); },
-  'rust-setup': async () => {
-    S.rustBusy = 'setup'; renderView();
-    try { toast(await inv('rust_setup'), 'ok'); } catch (e) { toast(e, 'err'); }
-    S.rustBusy = null; await rustLoad();
-  },
-  'rust-run': async () => {
-    try { toast(await inv('rust_run'), 'ok'); } catch (e) { toast(e, 'err'); }
+  'bot-toggle': async () => { await inv('botlab_toggle', { on: !(S.botlab && S.botlab.running) }); await botLoad(); },
+  'bot-reset': async () => { await inv('botlab_reset'); await botLoad(); toast('The bots start learning from scratch', 'ok'); },
+  'pack-install': async el => {
+    S.perfBusy = 'pack'; renderView();
+    try {
+      const r = await inv('pack_install', { mc: S.sel, all: el.dataset.all === '1', on: true });
+      const bad = r.filter(x => !x.ok).length;
+      toast(bad ? `Frost modpack installed, ${bad} mod(s) not available for some versions` : 'Frost modpack installed', bad ? 'err' : 'ok');
+    } catch (e) { toast(e, 'err'); }
+    S.perfBusy = null; S.perf = {}; await packLoad(); if (S.sel) perfLoad(S.sel);
   },
   'perf-ver': el => { S.sel = el.dataset.v; renderView(); },
   'perf-group': async el => {
@@ -571,6 +603,7 @@ async function boot() {
   L('launch-progress', e => { S.launch.frac = e.payload.fraction; refreshLaunchBlock(); });
   L('settings-changed', async () => { const st = await inv('get_state'); S.cfg = st.settings; });
   L('launch-warning', e => toast(e.payload, 'err'));
+  L('botlab-updated', () => { if (S.page === 'botai') botLoad(); });
   L('ipc-connected', e => { S.ipc = e.payload; });
 }
 boot().catch(e => { document.body.insertAdjacentHTML('beforeend', `<pre style="position:fixed;left:20px;top:90px;color:#ff9aa8;z-index:99">${esc(e)}</pre>`); });

@@ -31,6 +31,12 @@ public final class Dispatcher {
         } else if (type.equals("own_cape")) {
             String b64 = msg.has("png_b64") && !msg.get("png_b64").isJsonNull() ? msg.get("png_b64").getAsString() : null;
             state.ownCapePng = b64 == null ? null : java.util.Base64.getDecoder().decode(b64);
+        } else if (type.equals("bot_policy")) {
+            com.google.gson.JsonArray arr = msg.getAsJsonArray("params");
+            float[] p = new float[arr.size()];
+            for (int i = 0; i < p.length; i++) p[i] = arr.get(i).getAsFloat();
+            state.botParams = p;
+            state.botGeneration = msg.has("generation") ? msg.get("generation").getAsInt() : 0;
         } else if (type.equals("notice")) {
             if (msg.has("text")) state.notify(msg.get("text").getAsString());
         } else if (type.equals("spawn_bot")) {

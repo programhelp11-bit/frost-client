@@ -168,9 +168,6 @@ pub async fn prepare(
     // --- natives -------------------------------------------------------------------------------
     extract_natives(native_jars, natives_dir.clone()).await?;
 
-    if settings.auto_optimize {
-        let _ = crate::optimize::apply(&game_dir, version_id, settings.perf_vulkan);
-    }
 
     // --- arguments -----------------------------------------------------------------------------
     classpath.push(client_jar);
@@ -198,6 +195,7 @@ pub async fn prepare(
     vars.insert("natives_directory", natives_dir.to_string_lossy().into_owned());
     vars.insert("launcher_name", "FrostClient".into());
     vars.insert("launcher_version", env!("CARGO_PKG_VERSION").into());
+    let classpath_for_prewarm = classpath_str.clone();
     vars.insert("classpath", classpath_str);
 
     let mut jvm: Vec<String> = Vec::new();
@@ -241,6 +239,21 @@ pub async fn prepare(
     } else {
         find_java(settings)?
     };
+    if settings.launch_boost {
+        let java_major = ver.java_version.as_ref().map(|j| j.major_version).unwrap_or(8);
+        // Java 19+: a class-data-sharing archive that the JVM creates on first exit and reuses afterwards
+        // (noticeably faster class loading and start-up).
+        if java_major >= 19 {
+            let cds_dir = data_dir().join("cds");
+            if std::fs::create_dir_all(&cds_dir).is_ok() {
+                let jsa = cds_dir.join(format!("{}.jsa", version_id.replace(['/', '\\', ':'], "_")));
+                args.splice(0..0, ["-XX:+AutoCreateSharedArchive".to_string(), format!("-XX:SharedArchiveFile={}", jsa.display())]);
+            }
+        }
+        // Read the jars into the OS file cache in the background so the JVM does not wait for the disk.
+        let jars: Vec<String> = classpath_for_prewarm.split(if cfg!(windows) { ';' } else { ':' }).map(str::to_owned).collect();
+        std::thread::spawn(move || prewarm(&jars));
+    }
     Ok(LaunchPlan { java, args, game_dir, warnings, boost: settings.launch_boost })
 }
 
@@ -267,6 +280,17 @@ pub fn spawn(plan: &LaunchPlan) -> Result<tokio::process::Child> {
         .spawn()
         .with_context(|| format!("start java at {}", plan.java))?;
     Ok(child)
+}
+
+/// Reads each file once (and throws the data away) so it sits in the OS page cache before Java asks for it.
+fn prewarm(files: &[String]) {
+    use std::io::Read;
+    let mut buf = vec![0u8; 1 << 20];
+    for f in files {
+        if let Ok(mut file) = std::fs::File::open(f) {
+            while matches!(file.read(&mut buf), Ok(n) if n > 0) {}
+        }
+    }
 }
 
 /// Windows "Graphics settings" preference: high performance GPU for this javaw.exe.

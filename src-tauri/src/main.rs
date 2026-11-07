@@ -7,6 +7,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use base64::Engine;
 use std::collections::HashMap;
 use frost_client::auth::{self, Account, AccountStore};
+use frost_client::botlab::{self, Lab};
 use frost_client::config::Settings;
 use frost_client::cosmetics::{self, FrostApi, SkinVariant};
 use frost_client::downloader::Progress;
@@ -41,6 +42,9 @@ struct AppState {
     /// Cape the player currently wears (`frost`, `none` or a community id).
     active_cape: Mutex<String>,
     uploaded_capes: Mutex<HashMap<String, String>>,
+    /// Self-play bot trainer (keeps improving while the launcher is open).
+    lab: Mutex<Lab>,
+    lab_on: AtomicBool,
 }
 
 fn err<E: std::fmt::Display>(e: E) -> String {
@@ -75,6 +79,83 @@ fn push_settings(st: &AppState) {
         let s = st.settings.lock().unwrap();
         ipc.send(ToGame::Settings { qol: s.qol.clone(), hud: s.hud.clone() });
     }
+    push_policy(st);
+}
+
+/// Send the bots' trained tactics to the game.
+fn push_policy(st: &AppState) {
+    let Some(ipc) = &st.ipc else { return };
+    let lab = st.lab.lock().unwrap();
+    ipc.send(ToGame::BotPolicy { params: lab.params(), generation: lab.generation });
+}
+
+/// Background trainer: a few generations every couple of seconds, saved and pushed to the game.
+fn spawn_botlab(handle: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let mut rounds = 0u32;
+        loop {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            let st = handle.state::<AppState>();
+            if !st.lab_on.load(Ordering::Relaxed) {
+                continue;
+            }
+            let mut lab = st.lab.lock().unwrap().clone();
+            let lab = tokio::task::spawn_blocking(move || {
+                lab.run(3);
+                lab
+            })
+            .await;
+            let Ok(lab) = lab else { continue };
+            rounds += 1;
+            if rounds % 10 == 0 {
+                lab.save();
+            }
+            if rounds % 5 == 0 {
+                *st.lab.lock().unwrap() = lab;
+                push_policy(&st);
+                let _ = handle.emit("botlab-updated", ());
+            } else {
+                *st.lab.lock().unwrap() = lab;
+            }
+        }
+    });
+}
+
+#[tauri::command]
+fn botlab_status(st: State<'_, AppState>) -> Value {
+    let lab = st.lab.lock().unwrap();
+    let params: Vec<Value> = botlab::SPECS
+        .iter()
+        .zip(lab.params())
+        .map(|(sp, v)| json!({ "name": sp.name, "value": v, "min": sp.min, "max": sp.max, "default": sp.def }))
+        .collect();
+    json!({
+        "running": st.lab_on.load(Ordering::Relaxed),
+        "generation": lab.generation,
+        "win_rate": lab.win_rate,
+        "baseline_rate": lab.baseline_rate,
+        "history": lab.history,
+        "params": params,
+        "connected": st.ipc.as_ref().map(|i| i.connected()).unwrap_or(false),
+    })
+}
+
+#[tauri::command]
+fn botlab_toggle(st: State<'_, AppState>, on: bool) {
+    st.lab_on.store(on, Ordering::Relaxed);
+    if !on {
+        st.lab.lock().unwrap().save();
+    }
+}
+
+#[tauri::command]
+fn botlab_reset(st: State<'_, AppState>) {
+    {
+        let mut lab = st.lab.lock().unwrap();
+        lab.reset();
+        lab.save();
+    }
+    push_policy(&st);
 }
 
 fn ipc_of(st: &AppState) -> Result<&IpcHandle, String> {
@@ -230,6 +311,11 @@ async fn launch_game(app: AppHandle, st: State<'_, AppState>, version: String) -
 }
 
 async fn run_game(app: &AppHandle, http: reqwest::Client, settings: Settings, account: Account, version: String) {
+    // First launch of a version: set up the base Frost modpack (once; removing a mod later is respected).
+    if settings.auto_pack && !modrinth::instance_dir(&version).join(".frost-pack").exists() {
+        status(app, "preparing", "Installing the Frost modpack...");
+        let _ = pack_apply(&http, &version, true).await;
+    }
     status(app, "preparing", "Downloading game files...");
     let progress = Arc::new(Progress::default());
     let (stop_tx, mut stop_rx) = tokio::sync::oneshot::channel::<()>();
@@ -694,95 +780,60 @@ async fn perf_group(st: State<'_, AppState>, mc: String, group: String, on: bool
     Ok(Value::Array(results))
 }
 
-// ------------------------------------------------------------------ Horizon (Minecraft rebuilt in Rust, github.com/horizon-rust/horizon)
-
-const HORIZON_REPO: &str = "https://github.com/horizon-rust/horizon.git";
-
-fn horizon_dir() -> std::path::PathBuf {
-    frost_client::config::data_dir().join("horizon")
-}
-
-fn tool_ok(cmd: &str) -> bool {
-    std::process::Command::new(cmd).arg("--version").output().map(|o| o.status.success()).unwrap_or(false)
-}
-
-#[tauri::command]
-fn rust_status() -> Value {
-    let dir = horizon_dir();
-    json!({
-        "git": tool_ok("git"),
-        "cargo": tool_ok("cargo"),
-        "java": tool_ok("java"),
-        "cloned": dir.join("Cargo.toml").exists(),
-        "prepared": dir.join(".local").exists(),
-    })
-}
-
-/// Download (or update) the Horizon source from GitHub.
-#[tauri::command]
-async fn rust_setup() -> Result<String, String> {
-    tokio::task::spawn_blocking(|| {
-        let dir = horizon_dir();
-        let out = if dir.join(".git").exists() {
-            std::process::Command::new("git").args(["pull", "--ff-only"]).current_dir(&dir).output()
-        } else {
-            let _ = std::fs::create_dir_all(dir.parent().unwrap_or(&dir));
-            std::process::Command::new("git").args(["clone", "--depth", "1", HORIZON_REPO]).arg(&dir).output()
+/// The base Frost modpack for one version: the agent (always bundled) plus every performance mod.
+/// Returns what was installed or removed. Forge 1.8.9 has no Fabric mods; the agent carries its optimizations.
+async fn pack_apply(http: &reqwest::Client, mc: &str, on: bool) -> Vec<Value> {
+    let mut results = Vec::new();
+    if modrinth::loader_name(mc) != "fabric" {
+        return results;
+    }
+    for (_, slugs) in PERF_GROUPS.iter() {
+        for slug in slugs.iter() {
+            if on {
+                let r = modrinth::install(http, slug, mc, Arc::new(Progress::default())).await;
+                results.push(json!({ "version": mc, "mod": slug, "ok": r.is_ok(), "error": r.err().map(|e| e.to_string()) }));
+            } else if let Some(item) = modrinth::list_installed(mc).into_iter().find(|i| i.slug == *slug) {
+                let r = modrinth::remove(mc, &item.project_id);
+                results.push(json!({ "version": mc, "mod": slug, "ok": r.is_ok(), "error": r.err().map(|e| e.to_string()) }));
+            }
         }
-        .map_err(|e| format!("git is not available: {e}"))?;
-        if out.status.success() {
-            Ok("Horizon source is ready".to_string())
-        } else {
-            Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
-        }
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-/// Mojang's 26.3 server.jar (Horizon extracts its game data from it). Cached in the Horizon folder.
-async fn horizon_server_jar(http: &reqwest::Client) -> Result<std::path::PathBuf, String> {
-    let jar = horizon_dir().join("server-26.3.jar");
-    if jar.exists() {
-        return Ok(jar);
     }
-    let manifest: Value = http.get("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")
-        .send().await.map_err(|e| e.to_string())?.json().await.map_err(|e| e.to_string())?;
-    let url = manifest["versions"].as_array().into_iter().flatten()
-        .find(|v| v["id"] == "26.3").and_then(|v| v["url"].as_str()).ok_or("Minecraft 26.3 was not found in Mojang's version list")?.to_owned();
-    let ver: Value = http.get(&url).send().await.map_err(|e| e.to_string())?.json().await.map_err(|e| e.to_string())?;
-    let jar_url = ver["downloads"]["server"]["url"].as_str().ok_or("26.3 has no server download")?;
-    let bytes = http.get(jar_url).send().await.and_then(|r| r.error_for_status()).map_err(|e| e.to_string())?.bytes().await.map_err(|e| e.to_string())?;
-    std::fs::create_dir_all(horizon_dir()).map_err(|e| e.to_string())?;
-    std::fs::write(&jar, &bytes).map_err(|e| e.to_string())?;
-    Ok(jar)
+    let _ = std::fs::create_dir_all(modrinth::instance_dir(mc));
+    let _ = std::fs::write(modrinth::instance_dir(mc).join(".frost-pack"), if on { "1" } else { "0" });
+    results
 }
 
-/// Build and start the game itself (`cargo run --release -p horizon-client`) from the downloaded source.
-/// The first run also prepares the game data from Mojang's 26.3 server.jar.
+/// Install (or remove) the Frost modpack on one version, or on every supported version.
 #[tauri::command]
-async fn rust_run(st: State<'_, AppState>) -> Result<String, String> {
-    let dir = horizon_dir();
-    if !dir.join("Cargo.toml").exists() {
-        return Err("Download Horizon first".into());
+async fn pack_install(st: State<'_, AppState>, mc: String, all: bool, on: bool) -> Result<Value, String> {
+    let mut out = Vec::new();
+    if all {
+        for v in versions::SUPPORTED {
+            out.extend(pack_apply(&st.http, v, on).await);
+        }
+    } else {
+        if !versions::SUPPORTED.contains(&mc.as_str()) {
+            return Err(format!("Unsupported version {mc}"));
+        }
+        out.extend(pack_apply(&st.http, &mc, on).await);
     }
-    let mut script = String::new();
-    let first = !dir.join(".local").exists();
-    if first {
-        let jar = horizon_server_jar(&st.http).await?;
-        script.push_str(&format!("cargo run --release -p horizon-prepare -- --prepare --server-jar \"{}\" && ", jar.display()));
-    }
-    script.push_str("cargo run --release -p horizon-client");
-    #[cfg(windows)]
-    let child = std::process::Command::new("cmd").args(["/C", "start", "Horizon", "cmd", "/K", &script]).current_dir(&dir).spawn();
-    #[cfg(not(windows))]
-    let child = {
-        let log = std::fs::File::create(dir.join("frost-horizon.log")).map_err(|e| e.to_string())?;
-        let log2 = log.try_clone().map_err(|e| e.to_string())?;
-        std::process::Command::new("sh").args(["-c", &script]).current_dir(&dir).stdout(log).stderr(log2).spawn()
-    };
-    child.map_err(|e| e.to_string())?;
-    Ok(if first { "Preparing and building Horizon - the first start takes several minutes".into() } else { "Horizon is starting".into() })
+    Ok(Value::Array(out))
+}
+
+/// Per version: is the whole modpack in place?
+#[tauri::command]
+fn pack_status() -> Value {
+    let rows: Vec<Value> = versions::SUPPORTED
+        .iter()
+        .map(|v| {
+            let fabric = modrinth::loader_name(v) == "fabric";
+            let installed = modrinth::list_installed(v);
+            let total: usize = PERF_GROUPS.iter().map(|(_, s)| s.len()).sum();
+            let have = PERF_GROUPS.iter().flat_map(|(_, s)| s.iter()).filter(|s| installed.iter().any(|i| i.slug == **s)).count();
+            json!({ "version": v, "fabric": fabric, "have": have, "total": total })
+        })
+        .collect();
+    Value::Array(rows)
 }
 
 #[tauri::command]
@@ -843,7 +894,10 @@ fn main() {
                 api_cache: Mutex::new(None),
                 active_cape: Mutex::new("frost".to_owned()),
                 uploaded_capes: Mutex::new(HashMap::new()),
+                lab: Mutex::new(Lab::load()),
+                lab_on: AtomicBool::new(true),
             });
+            spawn_botlab(app.handle().clone());
             spawn_cosmetics_sync(app.handle().clone());
 
             // Push HUD/QoL settings whenever the game connects and tell the UI about it.
@@ -904,9 +958,11 @@ fn main() {
             mr_install,
             perf_status,
             perf_group,
-            rust_status,
-            rust_setup,
-            rust_run,
+            pack_install,
+            pack_status,
+            botlab_status,
+            botlab_toggle,
+            botlab_reset,
             mr_installed,
             mr_remove,
             open_instance_folder,

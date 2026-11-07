@@ -28,6 +28,9 @@ public final class FrostState {
     /** Short on-screen notice (drawn by the HUD for a few seconds). */
     /** PNG of the custom cape the player wears (null = built-in Frost cape). */
     public volatile byte[] ownCapePng;
+    /** Tactics trained by the launcher (see botlab.rs); null until the launcher sends them. */
+    public volatile float[] botParams;
+    public volatile int botGeneration;
     public volatile String notice = "";
     public volatile long noticeUntil;
 

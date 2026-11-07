@@ -59,12 +59,10 @@ pub struct Settings {
     pub while_playing: String,
     /// Falling snowflakes in the launcher background.
     pub snow: bool,
-    /// Rewrite performance keys in options.txt before every launch (mod-free FPS boost).
-    pub auto_optimize: bool,
-    /// Ask Minecraft 26.2+ for its experimental Vulkan renderer.
-    pub perf_vulkan: bool,
     /// High process priority + discrete GPU preference at launch.
     pub launch_boost: bool,
+    /// Install the base Frost modpack (performance mods + agent) on the first launch of each version.
+    pub auto_pack: bool,
 }
 
 impl Default for Settings {
@@ -82,9 +80,8 @@ impl Default for Settings {
             last_played: HashMap::new(),
             while_playing: "keep".into(),
             snow: true,
-            auto_optimize: true,
-            perf_vulkan: false,
             launch_boost: true,
+            auto_pack: true,
         }
     }
 }

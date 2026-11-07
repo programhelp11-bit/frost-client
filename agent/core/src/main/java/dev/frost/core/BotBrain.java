@@ -40,6 +40,11 @@ public final class BotBrain {
         return arm;
     }
 
+    /** Defaults of the trained tactics, same order as botlab.rs SPECS. */
+    static final float[] DEFAULT_PARAMS = {1.9f, 0.3f, 0.55f, 1.0f, 0.1f, 0.12f, 6f, 0.06f, 0.9f, 0.25f, 0.25f, 1.0f};
+    /** Tactics in use this tick: whatever the launcher's self-play trainer produced, else the defaults. */
+    private float[] p = DEFAULT_PARAMS;
+
     private float noise() {
         return rng.nextFloat() + rng.nextFloat() + rng.nextFloat() - 1.5f;
     }
@@ -92,12 +97,15 @@ public final class BotBrain {
         float d = clamp01(cfg.difficulty);
         float dt = Math.max(0f, Math.min(0.25f, obs.dt));
         Models.BotCommand cmd = new Models.BotCommand();
+        float[] trained = FrostState.INSTANCE.botParams;
+        p = trained != null && trained.length >= DEFAULT_PARAMS.length ? trained : DEFAULT_PARAMS;
         learn(obs, dt);
 
         // --- aim: lead the target, turn speed and wobble depend on difficulty
-        double lx = obs.target_vel.x * (0.05 + 0.1 * d);
-        double ly = obs.target_vel.y * (0.05 + 0.1 * d);
-        double lz = obs.target_vel.z * (0.05 + 0.1 * d);
+        float lead = p[4] * (0.5f + d);
+        double lx = obs.target_vel.x * lead;
+        double ly = obs.target_vel.y * lead;
+        double lz = obs.target_vel.z * lead;
         double tx = obs.target_pos.x + lx - obs.bot_pos.x;
         double ty = obs.target_pos.y + ly - obs.bot_pos.y;
         double tz = obs.target_pos.z + lz - obs.bot_pos.z;
@@ -135,11 +143,11 @@ public final class BotBrain {
 
         // --- tactics: back off when hurt, finish when the player is low
         boolean finish = obs.target_health > 0f && obs.target_health <= 6f;
-        if (obs.bot_health > 0f && obs.bot_health <= 6f && d > 0.4f && !finish && retreatLeft <= 0f && rng.nextFloat() < 0.06f) {
+        if (obs.bot_health > 0f && obs.bot_health <= p[6] && d > 0.4f && !finish && retreatLeft <= 0f && rng.nextFloat() < p[7]) {
             retreatLeft = 1.0f + rng.nextFloat();
         }
         boolean retreating = retreatLeft > 0f;
-        if (knocked && obs.on_ground && d > 0.2f) {
+        if (knocked && obs.on_ground && d > 0.2f && rng.nextFloat() < p[11]) {
             cmd.jump = true;
             jumpCooldown = 0.6f;
         }
@@ -147,20 +155,20 @@ public final class BotBrain {
         // --- movement depends on the learned plan
         strafeTimer -= dt;
         if (strafeTimer <= 0f) {
-            float base = arm == CIRCLE ? 0.9f : 0.3f;
+            float base = arm == CIRCLE ? p[1] * 3f : p[1];
             strafeTimer = base + rng.nextFloat() * (1f - 0.4f * d);
-            if (rng.nextFloat() < (arm == CIRCLE ? 0.25f : 0.55f)) strafeDir = -strafeDir;
-            if (d > 0.45f && Math.abs(targetLateral) > 0.08f && rng.nextFloat() < d) {
+            if (rng.nextFloat() < (arm == CIRCLE ? p[2] * 0.45f : p[2])) strafeDir = -strafeDir;
+            if (d > 0.45f && Math.abs(targetLateral) > 0.08f && rng.nextFloat() < d * p[3]) {
                 strafeDir = targetLateral > 0f ? -1f : 1f;
             }
         }
         double ideal;
         if ("crystal".equals(cfg.style)) ideal = 4.0;
         else if ("mace".equals(cfg.style)) ideal = 2.2;
-        else if (arm == PRESSURE) ideal = 1.9;
-        else if (arm == SPACING) ideal = 3.0;
-        else ideal = 2.5;
-        boolean kiting = d > 0.4f && !cfg.legacy_combat && attackTimer > 0.25f && dist < reach + 0.5
+        else if (arm == PRESSURE) ideal = p[0];
+        else if (arm == SPACING) ideal = p[0] * 1.58;
+        else ideal = p[0] * 1.32;
+        boolean kiting = d > 0.4f && !cfg.legacy_combat && attackTimer > p[10] && dist < reach + 0.5
             && !"crystal".equals(cfg.style) && arm != PRESSURE;
         if (retreating || kiting) {
             cmd.backward = true;
@@ -186,7 +194,7 @@ public final class BotBrain {
         boolean critStyle = !cfg.legacy_combat && d > 0.4f
             && ("sword".equals(cfg.style) || "axe_shield".equals(cfg.style) || "bedwars_rush".equals(cfg.style));
         boolean wantsCritJump = critStyle && obs.on_ground && jumpCooldown <= 0f && !retreating
-            && attackTimer < 0.3f && dist < reach + 0.9;
+            && attackTimer < 0.3f && dist < reach + p[8];
         if (wantsCritJump) {
             cmd.jump = true;
             jumpCooldown = 0.75f;
@@ -206,7 +214,7 @@ public final class BotBrain {
         if (ready && canHit && !cmd.use_item) {
             cmd.attack = true;
             attackTimer = nextAttackInterval(d);
-            wtapTimer = d > 0.4f ? 0.12f : 0f;
+            wtapTimer = d > 0.4f ? p[5] : 0f;
         }
         return cmd;
     }
@@ -222,7 +230,7 @@ public final class BotBrain {
             float cps = 5f + 8f * d + noise() * 1.5f;
             return 1f / Math.max(3f, Math.min(14f, cps));
         }
-        float early = 1f - 0.25f * (1f - d) * rng.nextFloat();
+        float early = 1f - p[9] * (1f - d) * rng.nextFloat();
         return cooldownSecs() * early + 0.02f;
     }
 
