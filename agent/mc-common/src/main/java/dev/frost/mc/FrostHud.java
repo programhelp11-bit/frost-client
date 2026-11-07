@@ -86,7 +86,7 @@ public final class FrostHud {
     public static void crosshair(GuiGraphics g, DeltaTracker dt, HudElement vanilla) {
         Minecraft mc = Minecraft.getInstance();
         Models.Features f = FrostState.INSTANCE.fx;
-        if (f.crosshair.equals("vanilla") || mc.options.hideGui) {
+        if (mc.options.hideGui || f.crosshair.equals("vanilla")) {
             vanilla.render(g, dt);
             return;
         }

@@ -203,7 +203,15 @@ public final class Features {
                     capturing = false;
                 }
             };
-            m.invoke(null, mc.getMainRenderTarget(), cb);
+            Object target = null;
+            for (Method c : Minecraft.class.getMethods()) {
+                if (c.getParameterCount() == 0 && c.getReturnType().getSimpleName().equals("RenderTarget")) {
+                    target = c.invoke(mc);
+                    break;
+                }
+            }
+            if (target == null) throw new NoSuchMethodException("render target");
+            m.invoke(null, target, cb);
         } catch (Throwable t) {
             captureBroken = true;
             capturing = false;
